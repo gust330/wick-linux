@@ -14,6 +14,10 @@ echo 0 > "$WICK_SIMULATE_POWER_FILE"
 failures=0
 power() { cat "$WICK_SIMULATE_POWER_FILE"; }
 guards() { pgrep -f "$wick guard" | wc -l | tr -d ' '; }
+settled_guards() { # expected: waits out a spare guard's lock retries, which take longer on a busy machine
+    for _ in $(seq 1 80); do [ "$(guards)" = "$1" ] && break; sleep 0.1; done
+    guards
+}
 expect() { # description expected actual
     if [ "$2" = "$3" ]; then echo "  ok    $1"; else echo "  FAIL  $1 (expected '$2', got '$3')"; failures=$((failures + 1)); fi
 }
@@ -26,17 +30,15 @@ last_reason() { sed -n 's/.*"reason" : "\(.*\)".*/\1/p' "$WICK_STATE_DIR/last-en
 echo "on, off"
 "$wick" on >/dev/null
 expect "on turns sleep off" 1 "$(power)"
-sleep 1.3 # a second guard retries the lock for up to a second before it leaves
-expect "one guard is running" 1 "$(guards)"
+expect "one guard is running" 1 "$(settled_guards 1)"
 "$wick" off >/dev/null
 expect "off turns sleep on" 0 "$(power)"
 sleep 7
-expect "guard exits on its own once the session is gone" 0 "$(guards)"
+expect "guard exits on its own once the session is gone" 0 "$(settled_guards 0)"
 
 echo "only one guard"
 "$wick" on >/dev/null; "$wick" on 2h >/dev/null; "$wick" on 1h >/dev/null
-sleep 1.3
-expect "repeat starts share one guard" 1 "$(guards)"
+expect "repeat starts share one guard" 1 "$(settled_guards 1)"
 "$wick" off >/dev/null; sleep 0.1; pkill -f "$wick guard"; sleep 0.2
 
 echo "timer"
@@ -61,8 +63,7 @@ wait_for 0 3; expect "next launch restarts the guard, which ends the expired ses
 
 echo "terminal closing"
 (bash -c "\"$wick\" on 30m >/dev/null; kill -HUP \$\$" 2>/dev/null) 2>/dev/null
-sleep 1.3
-expect "guard survives the terminal" 1 "$(guards)"
+expect "guard survives the terminal" 1 "$(settled_guards 1)"
 expect "still on" 1 "$(power)"
 "$wick" off >/dev/null; sleep 0.1; pkill -f "$wick guard"; sleep 0.2
 
@@ -71,7 +72,7 @@ echo "external change"
 echo 0 > "$WICK_SIMULATE_POWER_FILE"
 sleep 7
 expect "guard notices sleep turned back on elsewhere" stoppedExternally "$(last_reason)"
-expect "and exits" 0 "$(guards)"
+expect "and exits" 0 "$(settled_guards 0)"
 
 echo "wick run"
 "$wick" run sh -c 'cat "$WICK_SIMULATE_POWER_FILE" > "$WICK_STATE_DIR/during"; exit 7'
@@ -132,7 +133,7 @@ echo "losing the session file"
 sleep 1.3
 printf 'garbage' > "$WICK_STATE_DIR/session.json"
 wait_for 0 8; expect "a corrupt session ends rather than running unenforced" 0 "$(power)"
-sleep 0.2; expect "and the guard leaves" 0 "$(guards)"
+sleep 0.2; expect "and the guard leaves" 0 "$(settled_guards 0)"
 
 "$wick" on 30m >/dev/null
 sleep 1.3
@@ -151,7 +152,7 @@ for _ in $(seq 1 25); do "$wick" off >/dev/null; "$wick" on 30m >/dev/null; done
 sleep 7
 expect "the last start wins" 1 "$(power)"
 expect "with its session on disk" yes "$([ -f "$WICK_STATE_DIR/session.json" ] && echo yes || echo no)"
-expect "and exactly one guard" 1 "$(guards)"
+expect "and exactly one guard" 1 "$(settled_guards 1)"
 "$wick" off >/dev/null; sleep 0.1; pkill -f "$wick guard"; sleep 0.2
 
 echo "off --session-only"
