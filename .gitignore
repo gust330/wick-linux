@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+.vscode/
+.claude/
+dist/
+snapshots/
+.DS_Store
+node_modules/
+*.tgz

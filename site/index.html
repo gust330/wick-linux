@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wick: keep your Mac awake with the lid closed</title>
+    <meta
+      name="description"
+      content="Wick is a free, open source menu bar app that keeps your Mac awake with the lid closed, so coding agents and builds finish while you walk away."
+    />
+    <meta name="theme-color" content="#F7F4EF" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta property="og:title" content="Wick: close the lid, keep working" />
+    <meta property="og:description" content="A menu bar app that keeps your Mac awake with the lid closed, and always puts sleep back." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://s1lvazxy.github.io/wick/og.png" />
+    <meta property="og:url" content="https://s1lvazxy.github.io/wick/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      document.documentElement.classList.add("js");
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("scrub");
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#install">Skip to install</a>
+
+    <header class="nav" data-tone="day">
+      <a class="nav-brand" href="#top" aria-label="Wick, back to top">
+        <img class="on-day" src="./lockup-dark.svg" alt="" width="92" height="28" />
+        <img class="on-night" src="./lockup-light.svg" alt="" width="92" height="28" />
+      </a>
+      <nav aria-label="Main">
+        <a href="#how">What it does</a>
+        <a href="#safety">Safety</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/s1lvazxy/wick">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <!-- The concept: the page is a laptop closing. Scrolling lowers the lid, day becomes night, the ember stays lit. -->
+      <section class="scene" id="top" data-tone="day" aria-labelledby="headline">
+        <div class="scene-pin">
+          <div class="stage">
+            <div class="sky" aria-hidden="true"></div>
+
+            <div class="hero-copy">
+              <h1 id="headline">Close the lid.<br />Keep working.</h1>
+            </div>
+
+            <div class="under">
+              <p class="lede">
+                Wick keeps your Mac awake with the lid shut, so coding agents, builds and downloads finish while you
+                walk away. Free and open source.
+              </p>
+              <div class="under-actions">
+                <div class="command">
+                  <code>brew install --cask s1lvazxy/tap/wick</code>
+                  <button class="copy" type="button" data-copy="brew install --cask s1lvazxy/tap/wick">Copy</button>
+                </div>
+                <a class="text-link" href="#install">Other ways to install <span aria-hidden="true">↓</span></a>
+              </div>
+            </div>
+
+            <div class="laptop" aria-hidden="true">
+              <div class="halo"></div>
+              <div class="lid"></div>
+              <div class="base"></div>
+              <div class="ember"></div>
+            </div>
+          </div>
+
+          <div class="dusk" aria-hidden="true"></div>
+          <div class="night">
+            <img class="night-coal" src="./coal.webp" alt="" width="1920" height="1080" />
+            <div class="night-copy">
+              <h2>macOS would sleep here.<br />Wick stays lit.</h2>
+              <p>
+                Your agent keeps running and the network stays up. When the time you set runs out, your Mac goes back to
+                sleeping as usual.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="after-dark" data-tone="night">
+        <section class="how" id="how" aria-labelledby="how-title">
+          <header class="section-head">
+            <p class="eyebrow">What it does</p>
+            <h2 id="how-title">One button, with the stopping built in.</h2>
+            <p class="section-note">
+              Pick how long, press play, close the lid. This is the panel that drops from your menu bar. Try it, nothing
+              here touches your Mac.
+            </p>
+          </header>
+
+          <div class="tiles">
+            <figure class="tile tile-demo">
+              <div class="panel" id="demo" data-awake="false">
+                <div class="panel-glow" aria-hidden="true"></div>
+                <p class="panel-status"><span class="dot" aria-hidden="true"></span><span id="demo-status">Sleeps when the lid closes</span></p>
+                <div class="panel-hero">
+                  <div>
+                    <p class="panel-time" id="demo-time" aria-live="off">2:00</p>
+                    <p class="panel-caption" id="demo-caption">for the next 2 hours</p>
+                  </div>
+                  <button class="panel-play" id="demo-play" type="button" aria-label="Keep awake">
+                    <svg class="glyph-play" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M6.2 3.6c0-.8.9-1.3 1.6-.9l9 5.9c.6.4.6 1.3 0 1.7l-9 5.9c-.7.4-1.6-.1-1.6-.9z" fill="currentColor"/></svg>
+                    <svg class="glyph-stop" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><rect x="4.5" y="4.5" width="11" height="11" rx="2" fill="currentColor"/></svg>
+                  </button>
+                </div>
+                <canvas
+                  class="panel-ruler"
+                  id="demo-ruler"
+                  tabindex="0"
+                  role="slider"
+                  aria-label="Duration"
+                  aria-valuemin="5"
+                  aria-valuemax="720"
+                  aria-valuenow="120"
+                  aria-valuetext="2 hours"
+                ></canvas>
+                <div class="panel-presets" role="group" aria-label="Duration presets">
+                  <button type="button" data-minutes="30">30m</button>
+                  <button type="button" data-minutes="60">1h</button>
+                  <button type="button" data-minutes="120" aria-pressed="true">2h</button>
+                  <button type="button" data-minutes="240">4h</button>
+                  <button type="button" data-minutes="480">8h</button>
+                </div>
+                <div class="panel-card">
+                  <div class="panel-row">
+                    <div>
+                      <p>Stop when agents finish</p>
+                      <small>Claude Code running</small>
+                    </div>
+                    <button class="switch" id="demo-switch" type="button" role="switch" aria-checked="false" aria-label="Stop when agents finish"><span></span></button>
+                  </div>
+                  <div class="panel-row">
+                    <div>
+                      <p>Stop at low battery</p>
+                      <small>84%, plugged in</small>
+                    </div>
+                    <span class="panel-value">20%</span>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <strong>Drag the ruler.</strong> It's the wick: the lit ticks are the time left to burn.
+              </figcaption>
+            </figure>
+
+            <figure class="tile tile-agents">
+              <div class="terminal" aria-label="Example terminal session">
+                <p><span>$</span> wick run claude</p>
+                <p class="dim">Awake while this runs. Back to normal when it exits.</p>
+                <p class="gap"><span>$</span> wick agents</p>
+                <p>Claude Code</p>
+                <p>Codex</p>
+              </div>
+              <figcaption>
+                <strong>It knows your agents.</strong> Wick sees Claude Code, Codex, Aider, OpenCode, Gemini CLI and more,
+                and can stop when the last one exits.
+              </figcaption>
+            </figure>
+
+            <figure class="tile tile-bar">
+              <div class="menubar" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M20.5 16.3H4.87A1 1 0 0 1 4.3 14.48L14 7.7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.8" cy="11.9" r="2.25" fill="currentColor"/></svg>
+                <span>1h 42m</span>
+              </div>
+              <figcaption>
+                <strong>Always visible.</strong> A small mark in your menu bar. A filled ember means sleep is off, and how
+                long is left sits next to it.
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="safety" id="safety" aria-labelledby="safety-title">
+          <div class="safety-head">
+            <p class="eyebrow">Safety</p>
+            <h2 id="safety-title">It always puts sleep back.</h2>
+            <p class="section-note">
+              Forgetting <code>pmset disablesleep 1</code> is how a laptop cooks in a backpack. So Wick treats turning it
+              off again as the main job.
+            </p>
+          </div>
+          <div class="rail">
+            <div class="rail-fill" aria-hidden="true"></div>
+            <ol class="rail-list">
+              <li>
+                <h3>A guard outlives the app</h3>
+                <p>
+                  Every session is enforced by a small separate process. If the app crashes or the terminal closes, the
+                  timer still ends on time.
+                </p>
+              </li>
+              <li>
+                <h3>Low battery stops it</h3>
+                <p>On battery, Wick lets go at 20% by default, so your Mac can sleep rather than die mid-task.</p>
+              </li>
+              <li>
+                <h3>Heat stops it</h3>
+                <p>If macOS reports a critical thermal state, the session ends. You can't turn this one off.</p>
+              </li>
+              <li>
+                <h3>Logging out or quitting stops it</h3>
+                <p>
+                  Quit Wick, log out or shut down, and sleep comes back. If the guard is ever force-killed or the power
+                  cuts out, a background job picks the session up within five minutes.
+                </p>
+              </li>
+              <li>
+                <h3>The permission is one line</h3>
+                <p>A sudoers rule that allows two exact commands and nothing else. Read it, or remove it with <code>wick uninstall</code>.</p>
+                <pre class="rule" tabindex="0"><code>you ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1</code></pre>
+              </li>
+            </ol>
+            <p class="warning">Keep it out of bags while it's awake. A closed Mac sheds heat slowly, and no software fixes that.</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="dawn" data-tone="night">
+        <img src="./coal.webp" alt="" width="1920" height="1080" />
+        <p>By morning the work is done, and your Mac sleeps like normal again.</p>
+      </div>
+
+      <section class="install" id="install" data-tone="day" aria-labelledby="install-title">
+        <header class="section-head">
+          <p class="eyebrow">Install</p>
+          <h2 id="install-title">Four steps, about a minute.</h2>
+          <p class="section-note">Needs macOS 14 Sonoma or later. Runs on Apple silicon and Intel.</p>
+        </header>
+
+        <ol class="steps">
+          <li class="step">
+            <span class="step-number" aria-hidden="true">/01</span>
+            <div class="step-body">
+              <h3>Get the app</h3>
+              <p>Homebrew is the easiest way to install and update Wick, and it adds the <code>wick</code> command too.</p>
+              <div class="tabs" id="install-tabs">
+                <div role="tablist" aria-label="Install method">
+                  <button role="tab" type="button" id="tab-brew" aria-controls="panel-brew" aria-selected="true">Homebrew</button>
+                  <button role="tab" type="button" id="tab-npm" aria-controls="panel-npm" aria-selected="false" tabindex="-1">npm</button>
+                  <button role="tab" type="button" id="tab-download" aria-controls="panel-download" aria-selected="false" tabindex="-1">Download</button>
+                </div>
+                <div role="tabpanel" id="panel-brew" aria-labelledby="tab-brew" tabindex="0">
+                  <div class="command command-large">
+                    <code>brew install --cask s1lvazxy/tap/wick</code>
+                    <button class="copy" type="button" data-copy="brew install --cask s1lvazxy/tap/wick">Copy</button>
+                  </div>
+                  <p class="tab-note">Update with <code>brew upgrade --cask wick</code>.</p>
+                </div>
+                <div role="tabpanel" id="panel-npm" aria-labelledby="tab-npm" tabindex="0" hidden>
+                  <div class="command command-large">
+                    <code>npx wick-mac</code>
+                    <button class="copy" type="button" data-copy="npx wick-mac">Copy</button>
+                  </div>
+                  <p class="tab-note">Downloads the release, checks its SHA-256, installs the app and links the <code>wick</code> command. Needs Node 18 or later.</p>
+                </div>
+                <div role="tabpanel" id="panel-download" aria-labelledby="tab-download" tabindex="0" hidden>
+                  <a class="button" href="https://github.com/s1lvazxy/wick/releases/latest">Download from GitHub</a>
+                  <p class="tab-note">
+                    Unzip and drag Wick to Applications. Early builds aren't notarised, so the first time, open
+                    <strong>System Settings → Privacy &amp; Security</strong> and choose <strong>Open Anyway</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </li>
+
+          <li class="step">
+            <span class="step-number" aria-hidden="true">/02</span>
+            <div class="step-body">
+              <h3>Open it and press play</h3>
+              <p>Wick lives in your menu bar, with no window and no Dock icon. Click the mark, pick a duration, press play.</p>
+            </div>
+            <img class="step-shot" src="./shot-idle.webp" alt="The Wick panel showing 2:00 and a play button." width="680" height="682" loading="lazy" />
+          </li>
+
+          <li class="step">
+            <span class="step-number" aria-hidden="true">/03</span>
+            <div class="step-body">
+              <h3>Allow it, once</h3>
+              <p>
+                Only an admin can keep a closed Mac awake, so the first time, macOS asks for your password to add Wick's
+                one-line rule. You won't be asked again.
+              </p>
+            </div>
+            <img class="step-shot" src="./shot-access.webp" alt="The Wick panel asking for a one-time permission, with Not Now and Allow buttons." width="680" height="880" loading="lazy" />
+          </li>
+
+          <li class="step">
+            <span class="step-number" aria-hidden="true">/04</span>
+            <div class="step-body">
+              <h3>Close the lid</h3>
+              <p>That's it. Open it again whenever you like. The panel tells you how long is left, or why Wick stopped.</p>
+            </div>
+            <svg class="step-closed" viewBox="0 0 300 40" aria-hidden="true" fill="none">
+              <path d="M6 33h288" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+              <path d="M6 22h222" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+              <circle cx="248" cy="19" r="8" fill="#FF8A3D"/>
+            </svg>
+          </li>
+        </ol>
+
+        <div class="reference">
+          <div class="commands">
+            <h3>From the terminal</h3>
+            <dl>
+              <div><dt><code>wick on 2h</code></dt><dd>Stay awake for two hours.</dd></div>
+              <div><dt><code>wick on --agents</code></dt><dd>Stay awake until your agents finish.</dd></div>
+              <div><dt><code>wick run claude</code></dt><dd>Stay awake while one command runs.</dd></div>
+              <div><dt><code>wick off</code></dt><dd>Back to normal, right now.</dd></div>
+              <div><dt><code>wick status</code></dt><dd>See what's going on.</dd></div>
+            </dl>
+          </div>
+
+          <div class="faq">
+            <h3>Questions</h3>
+            <details>
+              <summary>Why not just use caffeinate?</summary>
+              <p><code>caffeinate</code> stops idle sleep, but closing the lid still puts the Mac to sleep. Only the <code>disablesleep</code> setting survives that, and it needs root.</p>
+            </details>
+            <details>
+              <summary>What counts as an agent finishing?</summary>
+              <p>Its process exiting. An agent left open at its prompt still counts as running, so use a timer or <code>wick run</code> if that's likely.</p>
+            </details>
+            <details>
+              <summary>Do I need an external display or power?</summary>
+              <p>Neither. It works on battery with nothing plugged in, and stops at the battery level you choose.</p>
+            </details>
+            <details>
+              <summary>How do I remove it?</summary>
+              <p>Run <code>wick uninstall</code> to remove the rule, then <code>brew uninstall --cask wick</code>, or delete the app if you installed it by hand.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer" data-tone="night">
+      <div class="footer-row">
+        <p>Free and open source, under the MIT License.</p>
+        <nav aria-label="Footer">
+          <a href="https://github.com/s1lvazxy/wick">Source</a>
+          <a href="https://github.com/s1lvazxy/wick/releases">Releases</a>
+          <a href="https://github.com/s1lvazxy/wick/issues">Report a problem</a>
+        </nav>
+      </div>
+      <img class="footer-word" src="./wordmark-light.svg" alt="Wick" width="1600" height="288" loading="lazy" />
+    </footer>
+
+    <p class="sr-only" role="status" id="copy-status"></p>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

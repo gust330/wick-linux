@@ -1,0 +1,104 @@
+# Push a tag like v0.2.0 to release. Bump wickVersion and packaging/npm/package.json first.
+#
+# Every secret is optional. Without any, this publishes an ad hoc signed build to GitHub Releases.
+#   DEVELOPER_ID_P12, DEVELOPER_ID_P12_PASSWORD, DEVELOPER_ID_NAME   sign with a Developer ID
+#   NOTARY_APPLE_ID, NOTARY_PASSWORD, NOTARY_TEAM_ID                 notarise
+#   TAP_TOKEN                                                        update s1lvazxy/homebrew-tap
+#   NPM_TOKEN                                                        publish wick-mac
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      HAS_SIGNING: ${{ secrets.DEVELOPER_ID_P12 != '' }}
+      HAS_NOTARY: ${{ secrets.NOTARY_APPLE_ID != '' }}
+      HAS_TAP: ${{ secrets.TAP_TOKEN != '' }}
+      HAS_NPM: ${{ secrets.NPM_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - run: swift test
+      - run: scripts/e2e.sh
+
+      - name: Check the versions agree with the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          grep -q "wickVersion = \"$tag\"" Sources/WickCore/Durations.swift
+          grep -q "\"version\": \"$tag\"" packaging/npm/package.json
+
+      - name: Import the signing certificate
+        if: env.HAS_SIGNING == 'true'
+        env:
+          P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(uuidgen)
+          echo "$P12" | base64 -d > "$RUNNER_TEMP/id.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/id.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+
+      - name: Build
+        env:
+          WICK_SIGN_IDENTITY: ${{ env.HAS_SIGNING == 'true' && secrets.DEVELOPER_ID_NAME || '-' }}
+        run: scripts/build-app.sh
+
+      - name: Notarise
+        if: env.HAS_SIGNING == 'true' && env.HAS_NOTARY == 'true'
+        env:
+          APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          xcrun notarytool submit "dist/Wick-$version.zip" --wait \
+            --apple-id "$APPLE_ID" --password "$PASSWORD" --team-id "$TEAM_ID"
+          xcrun stapler staple dist/Wick.app
+          ditto -c -k --keepParent dist/Wick.app "dist/Wick-$version.zip"
+          (cd dist && shasum -a 256 "Wick-$version.zip" > "Wick-$version.zip.sha256")
+
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" --generate-notes \
+            "dist/Wick-$version.zip" "dist/Wick-$version.zip.sha256"
+
+      - name: Update the Homebrew tap
+        if: env.HAS_TAP == 'true'
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sha=$(cut -d' ' -f1 "dist/Wick-$version.zip.sha256")
+          git clone "https://x-access-token:$TAP_TOKEN@github.com/s1lvazxy/homebrew-tap.git" tap
+          mkdir -p tap/Casks
+          sed -e "s/^  version .*/  version \"$version\"/" -e "s/^  sha256 .*/  sha256 \"$sha\"/" \
+            packaging/homebrew/wick.rb > tap/Casks/wick.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/wick.rb
+          git commit -m "wick $version"
+          git push
+
+      - name: Publish to npm
+        if: env.HAS_NPM == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd packaging/npm
+          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          npm publish --access public

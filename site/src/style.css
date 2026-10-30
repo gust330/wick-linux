@@ -1,0 +1,1366 @@
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "@radix-ui/colors/sand.css";
+
+:root {
+  /* Brand tokens, from brand/README.md. Ember only ever means awake. */
+  --ember: #ff8a3d;
+  --ember-hot: #ffc27a;
+  --ember-deep: #d9421a;
+  --paper: #f7f4ef;
+  --paper-ink: #f5f2ee;
+  --canvas: #141211;
+  --night: #0c0a09;
+
+  --text-on-night: rgb(245 242 238 / 68%);
+  --hairline-night: rgb(255 255 255 / 12%);
+  --hairline-day: var(--sand-5);
+
+  --sans: "Geist Variable", -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: "Geist Mono Variable", ui-monospace, Menlo, monospace;
+  --system: -apple-system, BlinkMacSystemFont, "Geist Variable", sans-serif;
+
+  --gutter: clamp(16px, 2.8vw, 40px);
+  --measure: 34rem;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* The lid's geometry, refined by main.ts once real text can be measured. */
+  --base-y: 68svh;
+  --line: clamp(10px, 1.5vw, 24px);
+
+  font-family: var(--sans);
+  font-size: 100%;
+  line-height: 1.5;
+  color: var(--sand-12);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body,
+h1,
+h2,
+h3,
+p,
+ol,
+dl,
+dd,
+pre,
+figure {
+  margin: 0;
+  padding: 0;
+}
+
+ol {
+  list-style: none;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+}
+
+img,
+canvas,
+svg {
+  display: block;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+code,
+pre {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+h1,
+h2 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+.skip {
+  position: fixed;
+  z-index: 20;
+  top: 8px;
+  left: 8px;
+  padding: 8px 14px;
+  color: var(--canvas);
+  background: var(--ember);
+  border-radius: 8px;
+  transform: translateY(-200%);
+}
+
+.skip:focus {
+  transform: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Nav */
+
+.nav {
+  position: fixed;
+  z-index: 10;
+  inset: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px var(--gutter);
+  transition: color 180ms ease;
+  color: var(--sand-12);
+}
+
+.nav[data-tone="night"] {
+  color: var(--paper-ink);
+}
+
+/* Scroll edge: content fades out under the nav instead of colliding with it. */
+.nav::before,
+.nav::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 -20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.nav::before {
+  background: linear-gradient(180deg, var(--paper) 55%, transparent);
+}
+
+.nav::after {
+  background: linear-gradient(180deg, var(--night) 55%, transparent);
+}
+
+.nav[data-tone="day"]:not([data-clear="true"])::before,
+.nav[data-tone="night"]:not([data-clear="true"])::after {
+  opacity: 1;
+}
+
+.nav-brand {
+  position: relative;
+  display: block;
+  width: 92px;
+  height: 28px;
+}
+
+.nav-brand img {
+  position: absolute;
+  inset: 0;
+  transition: opacity 180ms ease;
+}
+
+.on-night,
+.nav[data-tone="night"] .on-day {
+  opacity: 0;
+}
+
+.nav[data-tone="night"] .on-night {
+  opacity: 1;
+}
+
+.nav nav {
+  display: flex;
+  gap: clamp(14px, 2.4vw, 32px);
+  font-size: 0.9rem;
+}
+
+.nav nav a {
+  padding: 10px 0;
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nav nav a:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+}
+
+@media (max-width: 640px) {
+  .nav nav a:not(:nth-child(3)):not(:nth-child(4)) {
+    display: none;
+  }
+}
+
+/* The scene. Without JS or with reduced motion this is plain document flow: day, then night. */
+
+.stage {
+  position: relative;
+  height: 100svh;
+  min-height: 620px;
+  overflow: hidden;
+}
+
+.sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 55% at 86% 78%, rgb(255 138 61 / 34%), transparent 70%),
+    radial-gradient(90% 60% at 100% 100%, rgb(217 66 26 / 18%), transparent 70%),
+    var(--paper);
+}
+
+.hero-copy {
+  position: absolute;
+  z-index: 1;
+  top: clamp(78px, 11svh, 112px);
+  left: var(--gutter);
+}
+
+h1 {
+  width: fit-content;
+  font-size: clamp(3rem, 8.6vw, 9.25rem);
+  font-weight: 500;
+  line-height: 0.96;
+  letter-spacing: -0.045em;
+}
+
+.under {
+  position: absolute;
+  z-index: 1;
+  inset: auto var(--gutter) clamp(20px, 3.4svh, 36px);
+  display: grid;
+  grid-template-columns: minmax(0, 30rem) auto;
+  gap: 16px 40px;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.lede {
+  font-size: clamp(1rem, 1.4vw, 1.25rem);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.under-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.text-link {
+  padding: 6px 0;
+  font-size: 0.9rem;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 860px) {
+  .under {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .under-actions {
+    align-items: stretch;
+  }
+
+  .text-link {
+    align-self: flex-start;
+  }
+}
+
+.command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 5px 5px 16px;
+  color: var(--paper-ink);
+  background: var(--canvas);
+  border-radius: 12px;
+}
+
+.command code {
+  overflow-x: auto;
+  flex: 1;
+  color: var(--paper-ink);
+  font-size: clamp(0.78rem, 1.1vw, 0.92rem);
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.copy {
+  flex: none;
+  min-width: 66px;
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--canvas);
+  background: var(--paper-ink);
+  border-radius: 8px;
+  transition: transform 100ms var(--ease-out);
+}
+
+.copy:active,
+.button:active,
+.panel-play:active,
+.panel-presets button:active {
+  transform: scale(0.96);
+}
+
+/* The laptop, in side view. Same drawing as the logo: a base, a lid, an ember. */
+
+.laptop {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--sand-12);
+}
+
+.lid,
+.base {
+  position: absolute;
+  left: var(--gutter);
+  height: var(--line);
+  background: currentcolor;
+  border-radius: 999px;
+}
+
+.base {
+  top: var(--base-y);
+  right: var(--gutter);
+}
+
+.lid {
+  top: calc(var(--base-y) - var(--line) - 3px);
+  width: calc((100% - 2 * var(--gutter)) * 0.8);
+  transform: rotate(-18deg);
+  transform-origin: calc(var(--line) / 2) 50%;
+}
+
+.ember {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--ember-size, 26vmin);
+  height: var(--ember-size, 26vmin);
+  background: radial-gradient(circle at 50% 50%, #fff8ec 0%, var(--ember-hot) 46%, var(--ember) 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 60px rgb(255 138 61 / 55%);
+  transform: translate(68vw, calc(var(--base-y) - 28vmin));
+  will-change: transform;
+}
+
+.halo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1100px;
+  height: 1100px;
+  margin: -550px 0 0 -550px;
+  background: radial-gradient(circle, rgb(255 138 61 / 40%) 0%, rgb(217 66 26 / 16%) 34%, transparent 66%);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.dusk {
+  display: none;
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background: linear-gradient(180deg, #5f2214 0%, #c9491d 52%, #ff9a50 100%);
+  opacity: 0;
+}
+
+.scrub .dusk {
+  display: block;
+}
+
+.night {
+  position: relative;
+  overflow: hidden;
+  min-height: 70svh;
+  color: var(--paper-ink);
+  background: var(--night);
+}
+
+.night-coal {
+  position: absolute;
+  inset: auto 0 0;
+  width: 100%;
+  height: 60%;
+  object-fit: cover;
+  object-position: bottom;
+  opacity: 0.55;
+  /* Fades out by the bottom edge, so the scene meets the next section without a seam. */
+  mask-image: linear-gradient(180deg, #000 45%, transparent 96%);
+}
+
+.night-copy {
+  position: relative;
+  z-index: 4;
+  padding: clamp(88px, 14svh, 120px) var(--gutter) 40px;
+}
+
+.night-copy h2 {
+  font-size: clamp(2.5rem, 7vw, 7.5rem);
+  font-weight: 500;
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+}
+
+.night-copy p {
+  max-width: var(--measure);
+  margin-top: clamp(14px, 2.4svh, 24px);
+  font-size: clamp(1rem, 1.4vw, 1.25rem);
+  line-height: 1.4;
+  color: var(--text-on-night);
+}
+
+.scrub .scene {
+  height: 300svh;
+}
+
+.scrub .scene-pin {
+  position: sticky;
+  top: 0;
+  overflow: hidden;
+  height: 100svh;
+  min-height: 620px;
+}
+
+.scrub .stage {
+  position: absolute;
+  inset: 0;
+}
+
+.scrub .night {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  min-height: 0;
+  opacity: 0;
+}
+
+.scrub .night-copy {
+  opacity: 0;
+}
+
+/* After dark */
+
+.after-dark {
+  color: var(--paper-ink);
+  background: var(--night);
+}
+
+.how,
+.safety,
+.install {
+  padding: clamp(72px, 11vw, 160px) var(--gutter);
+}
+
+.section-head {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 20px 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--hairline-night);
+}
+
+.install .section-head {
+  border-top-color: var(--hairline-day);
+}
+
+.eyebrow {
+  grid-column: 1 / -1;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-on-night);
+}
+
+.install .eyebrow {
+  color: var(--sand-11);
+}
+
+.section-head h2,
+.safety-head h2 {
+  font-size: clamp(2.25rem, 5vw, 5rem);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.section-head h2 {
+  grid-column: 1 / span 8;
+}
+
+.section-note {
+  max-width: 26rem;
+  font-size: 1rem;
+  line-height: 1.45;
+  color: var(--text-on-night);
+}
+
+.section-head .section-note {
+  grid-column: 9 / -1;
+  align-self: end;
+}
+
+.install .section-note {
+  color: var(--sand-11);
+}
+
+@media (max-width: 860px) {
+  .section-head h2,
+  .section-head .section-note {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Tiles: real interface on a field of the brand's light */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: clamp(40px, 6vw, 72px);
+}
+
+.tile {
+  --field: url("/coal.webp");
+
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 24px;
+  padding: clamp(16px, 2vw, 28px);
+  background: var(--field) center bottom / cover no-repeat #1b1412;
+  border-radius: 20px;
+}
+
+.tile::after {
+  /* Fine grain, so the light reads as a material rather than as a CSS gradient. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.12;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+.tile > * {
+  position: relative;
+  z-index: 1;
+}
+
+.tile figcaption {
+  max-width: 28rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: rgb(245 242 238 / 82%);
+}
+
+.tile figcaption strong {
+  font-weight: 500;
+  color: var(--paper-ink);
+}
+
+.tile-demo {
+  grid-column: 1 / span 7;
+  grid-row: 1 / span 2;
+  align-items: center;
+  padding-top: clamp(28px, 5vw, 72px);
+}
+
+.tile-demo figcaption {
+  align-self: stretch;
+  max-width: none;
+}
+
+.tile-agents {
+  grid-column: 8 / -1;
+  background-position: 20% 100%;
+  background-size: 260%;
+}
+
+.tile-bar {
+  grid-column: 8 / -1;
+  background-position: 88% 100%;
+  background-size: 340%;
+}
+
+@media (max-width: 960px) {
+  .tiles {
+    grid-template-rows: none;
+  }
+
+  .tile-demo,
+  .tile-agents,
+  .tile-bar {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+}
+
+/* The demo panel. Same type as the app, so it's the system font here, not the site's. */
+
+.panel {
+  position: relative;
+  overflow: hidden;
+  width: min(100%, 372px);
+  padding-bottom: 10px;
+  font-family: var(--system);
+  color: var(--paper-ink);
+  background: rgb(20 18 17 / 94%);
+  border-radius: 24px;
+  box-shadow:
+    inset 0 0 0 1px var(--hairline-night),
+    0 30px 60px rgb(0 0 0 / 45%),
+    0 2px 6px rgb(0 0 0 / 30%);
+}
+
+.panel-glow {
+  position: absolute;
+  inset: auto -25% 0;
+  height: 330px;
+  background: radial-gradient(50% 100% at 50% 100%, rgb(255 138 61 / 72%), rgb(217 66 26 / 42%) 36%, rgb(217 66 26 / 10%) 72%, transparent);
+  opacity: 0;
+  transform: translateY(70px);
+  transition:
+    opacity 250ms var(--ease-out),
+    transform 250ms var(--ease-out);
+  pointer-events: none;
+}
+
+.panel[data-awake="true"] .panel-glow {
+  opacity: 1;
+  transform: none;
+  transition-duration: 550ms;
+}
+
+.panel > :not(.panel-glow) {
+  position: relative;
+}
+
+.panel-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 18px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-on-night);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  background: rgb(245 242 238 / 40%);
+  border-radius: 50%;
+  transition:
+    background-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+[data-awake="true"] .dot {
+  background: var(--ember);
+  box-shadow: 0 0 8px var(--ember);
+}
+
+.panel-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px 0;
+}
+
+.panel-time {
+  font-size: clamp(46px, 14vw, 58px);
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  line-height: 66px;
+  letter-spacing: -1.6px;
+  white-space: nowrap;
+}
+
+.panel-caption {
+  font-size: 12.5px;
+  color: var(--text-on-night);
+}
+
+.panel-play {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  color: #1a1412;
+  background: var(--paper-ink);
+  border-radius: 50%;
+  transition:
+    background-color 200ms ease,
+    box-shadow 200ms ease,
+    transform 100ms var(--ease-out);
+}
+
+[data-awake="true"] .panel-play {
+  background: var(--ember);
+  box-shadow: 0 0 32px rgb(255 138 61 / 55%);
+}
+
+.panel-play svg {
+  grid-area: 1 / 1;
+  transition:
+    opacity 160ms ease,
+    transform 160ms var(--ease-out),
+    filter 160ms ease;
+}
+
+.glyph-stop,
+[data-awake="true"] .glyph-play {
+  opacity: 0;
+  transform: scale(0.25);
+  filter: blur(4px);
+}
+
+[data-awake="true"] .glyph-stop {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+.panel-ruler {
+  width: 100%;
+  height: 44px;
+  margin-top: 10px;
+  cursor: ew-resize;
+  touch-action: pan-y;
+  mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+}
+
+.panel-ruler:focus-visible {
+  outline-offset: -2px;
+}
+
+.panel-presets {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 8px 10px 0;
+}
+
+.panel-presets button {
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-on-night);
+  border-radius: 999px;
+  transition: transform 100ms var(--ease-out);
+}
+
+.panel-presets button[aria-pressed="true"] {
+  color: var(--paper-ink);
+  background: rgb(255 255 255 / 12%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .panel-presets button:hover {
+    color: var(--paper-ink);
+  }
+}
+
+.panel-card {
+  margin: 10px 10px 0;
+  background: rgb(0 0 0 / 22%);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%);
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 14px;
+}
+
+.panel-row + .panel-row {
+  border-top: 1px solid var(--hairline-night);
+}
+
+.panel-row p {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.panel-row small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-on-night);
+}
+
+.panel-value {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  background: rgb(255 255 255 / 16%);
+  border-radius: 999px;
+  transition: background-color 160ms ease;
+}
+
+.switch::before {
+  /* A bigger hit area than the drawn control. */
+  content: "";
+  position: absolute;
+  inset: -12px -6px;
+}
+
+.switch span {
+  position: absolute;
+  inset: 2px auto 2px 2px;
+  width: 16px;
+  background: var(--paper-ink);
+  border-radius: 50%;
+  transition: transform 200ms var(--ease-out);
+}
+
+.switch[aria-checked="true"] {
+  background: var(--ember);
+}
+
+.switch[aria-checked="true"] span {
+  transform: translateX(14px);
+}
+
+.terminal {
+  padding: 16px 18px;
+  font-family: var(--mono);
+  font-size: clamp(0.78rem, 1vw, 0.88rem);
+  line-height: 1.6;
+  background: rgb(12 10 9 / 86%);
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--hairline-night);
+}
+
+.terminal span {
+  color: var(--ember);
+}
+
+.terminal .dim {
+  color: var(--text-on-night);
+}
+
+.terminal .gap {
+  margin-top: 12px;
+}
+
+.menubar {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-family: var(--system);
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  background: rgb(12 10 9 / 86%);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--hairline-night);
+}
+
+/* Safety */
+
+.safety {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 40px 24px;
+  border-top: 1px solid var(--hairline-night);
+  margin-inline: var(--gutter);
+  padding-inline: 0;
+  padding-top: 18px;
+}
+
+.safety-head {
+  grid-column: 1 / span 6;
+  align-self: start;
+  display: grid;
+  gap: 20px;
+}
+
+.scrub .safety-head {
+  position: sticky;
+  top: 96px;
+}
+
+.rail {
+  position: relative;
+  min-width: 0;
+  grid-column: 8 / -1;
+  padding-top: clamp(0px, 6vw, 72px);
+  padding-left: 28px;
+}
+
+.rail::before,
+.rail-fill {
+  content: "";
+  position: absolute;
+  top: clamp(0px, 6vw, 72px);
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  border-radius: 2px;
+}
+
+.rail::before {
+  background: var(--hairline-night);
+}
+
+.rail-fill {
+  background: linear-gradient(180deg, var(--ember-hot), var(--ember) 60%, var(--ember-deep));
+  transform-origin: top;
+}
+
+.scrub .rail-fill {
+  transform: scaleY(0);
+}
+
+.rail-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(36px, 5vw, 64px);
+}
+
+.rail-list h3 {
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.rail-list p {
+  max-width: 30rem;
+  margin-top: 8px;
+  color: var(--text-on-night);
+}
+
+.rail-list code {
+  color: var(--paper-ink);
+}
+
+.rule {
+  overflow-x: auto;
+  margin-top: 14px;
+  padding: 14px 16px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  background: rgb(255 255 255 / 5%);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--hairline-night);
+}
+
+.warning {
+  margin-top: clamp(36px, 5vw, 64px);
+  font-weight: 500;
+  color: var(--ember-hot);
+}
+
+@media (max-width: 860px) {
+  .safety-head,
+  .rail {
+    grid-column: 1 / -1;
+  }
+
+  .scrub .safety-head {
+    position: static;
+  }
+}
+
+/* Dawn: the same coal, now a sunrise that dissolves into the page */
+
+.dawn {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  padding: 0 var(--gutter);
+  color: var(--paper-ink);
+  background: var(--night);
+}
+
+.dawn img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: bottom;
+}
+
+.dawn::after {
+  content: "";
+  position: absolute;
+  inset: 45% 0 0;
+  background: linear-gradient(180deg, transparent, rgb(255 217 160 / 42%) 52%, var(--paper) 96%);
+}
+
+.dawn p {
+  position: relative;
+  z-index: 1;
+  max-width: 17ch;
+  margin-bottom: 10svh;
+  font-size: clamp(2.25rem, 5.6vw, 5.75rem);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  text-align: center;
+  text-wrap: balance;
+  text-shadow: 0 1px 30px rgb(12 10 9 / 35%);
+}
+
+/* Install */
+
+.install {
+  padding-top: clamp(32px, 5vw, 64px);
+  background: var(--paper);
+}
+
+.steps {
+  margin-top: clamp(40px, 6vw, 72px);
+}
+
+.step {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px 24px;
+  padding-block: clamp(24px, 3.4vw, 44px);
+  border-top: 1px solid var(--hairline-day);
+}
+
+.step-number {
+  grid-column: 1 / span 1;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  line-height: 2.3;
+  color: var(--sand-11);
+}
+
+.step-body {
+  grid-column: 2 / span 6;
+}
+
+.step-body h3 {
+  font-size: clamp(1.5rem, 2.6vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.step-body > p {
+  max-width: 32rem;
+  margin-top: 10px;
+  color: var(--sand-11);
+}
+
+.step-body > p code,
+.tab-note code {
+  color: var(--sand-12);
+}
+
+.step-shot {
+  grid-column: 9 / -1;
+  width: min(100%, 300px);
+  justify-self: end;
+  /* Radius matches the panel: 24pt at 340pt wide, scaled to this width. */
+  border-radius: 21px;
+  box-shadow:
+    0 24px 48px rgb(20 18 17 / 22%),
+    0 2px 6px rgb(20 18 17 / 18%);
+}
+
+@media (max-width: 860px) {
+  .step-number,
+  .step-body,
+  .step-shot {
+    grid-column: 1 / -1;
+  }
+
+  .step-number {
+    line-height: 1;
+  }
+
+  .step-shot {
+    justify-self: start;
+  }
+}
+
+.step-closed {
+  grid-column: 9 / -1;
+  align-self: center;
+  justify-self: end;
+  width: min(100%, 300px);
+  color: var(--sand-12);
+}
+
+@media (max-width: 860px) {
+  .step-closed {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+.tabs {
+  margin-top: 22px;
+}
+
+[role="tablist"] {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--sand-4);
+  border-radius: 11px;
+}
+
+[role="tab"] {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--sand-11);
+  border-radius: 8px;
+}
+
+[role="tab"][aria-selected="true"] {
+  color: var(--sand-12);
+  background: var(--sand-1);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
+}
+
+[role="tabpanel"] {
+  margin-top: 12px;
+}
+
+.command-large {
+  padding: 7px 7px 7px 18px;
+}
+
+.command-large code {
+  font-size: clamp(0.8rem, 1.5vw, 1rem);
+}
+
+.tab-note {
+  max-width: 36rem;
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: var(--sand-11);
+}
+
+.tab-note strong {
+  font-weight: 500;
+  color: var(--sand-12);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 20px;
+  font-weight: 500;
+  text-decoration: none;
+  color: var(--paper-ink);
+  background: var(--canvas);
+  border-radius: 12px;
+  transition: transform 100ms var(--ease-out);
+}
+
+.reference {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 48px 24px;
+  padding-top: clamp(32px, 5vw, 56px);
+  border-top: 1px solid var(--hairline-day);
+}
+
+.commands {
+  grid-column: 2 / span 6;
+}
+
+.faq {
+  grid-column: 8 / -1;
+}
+
+.reference h3 {
+  margin-bottom: 14px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--sand-11);
+}
+
+.commands dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 20px;
+  padding-block: 11px;
+  border-top: 1px solid var(--hairline-day);
+}
+
+.commands dt {
+  width: 11.5rem;
+  flex: none;
+}
+
+.commands dd {
+  color: var(--sand-11);
+}
+
+@media (max-width: 480px) {
+  .commands dt {
+    width: 100%;
+  }
+}
+
+details {
+  border-top: 1px solid var(--hairline-day);
+}
+
+summary {
+  padding-block: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+details p {
+  padding-bottom: 14px;
+  color: var(--sand-11);
+}
+
+@media (max-width: 860px) {
+  .commands,
+  .faq {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Footer */
+
+.footer {
+  overflow: hidden;
+  padding: 24px var(--gutter) 0;
+  color: var(--paper-ink);
+  background: var(--night);
+}
+
+.footer-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 32px;
+  font-size: 0.9rem;
+  color: var(--text-on-night);
+}
+
+.footer-row nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 20px;
+}
+
+.footer-row a {
+  display: inline-block;
+  padding-block: 6px;
+  color: var(--paper-ink);
+  text-decoration: none;
+}
+
+.footer-row p {
+  padding-block: 6px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .footer-row a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+.footer-word {
+  width: 100%;
+  margin-top: clamp(32px, 6vw, 80px);
+  margin-bottom: -2.5vw;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .panel-glow,
+  .panel-play svg {
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .panel {
+    background: var(--canvas);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --text-on-night: var(--paper-ink);
+    --hairline-night: rgb(255 255 255 / 45%);
+  }
+}

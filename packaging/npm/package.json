@@ -1,0 +1,13 @@
+{
+  "name": "wick-mac",
+  "version": "0.1.0",
+  "description": "Installs Wick, which keeps a Mac awake with the lid closed. Run: npx wick-mac",
+  "license": "MIT",
+  "repository": "github:s1lvazxy/wick",
+  "homepage": "https://github.com/s1lvazxy/wick",
+  "bin": { "wick-mac": "bin/install.js" },
+  "files": ["bin"],
+  "os": ["darwin"],
+  "engines": { "node": ">=18" },
+  "keywords": ["macos", "menu-bar", "sleep", "pmset", "clamshell", "ai-agents", "claude-code", "codex"]
+}
