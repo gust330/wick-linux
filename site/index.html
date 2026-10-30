@@ -243,7 +243,6 @@
               <div class="tabs" id="install-tabs">
                 <div role="tablist" aria-label="Install method">
                   <button role="tab" type="button" id="tab-brew" aria-controls="panel-brew" aria-selected="true">Homebrew</button>
-                  <button role="tab" type="button" id="tab-npm" aria-controls="panel-npm" aria-selected="false" tabindex="-1">npm</button>
                   <button role="tab" type="button" id="tab-download" aria-controls="panel-download" aria-selected="false" tabindex="-1">Download</button>
                 </div>
                 <div role="tabpanel" id="panel-brew" aria-labelledby="tab-brew" tabindex="0">
@@ -252,13 +251,6 @@
                     <button class="copy" type="button" data-copy="brew install --cask s1lvazxy/tap/wick">Copy</button>
                   </div>
                   <p class="tab-note">Update with <code>brew upgrade --cask wick</code>.</p>
-                </div>
-                <div role="tabpanel" id="panel-npm" aria-labelledby="tab-npm" tabindex="0" hidden>
-                  <div class="command command-large">
-                    <code>npx wick-mac</code>
-                    <button class="copy" type="button" data-copy="npx wick-mac">Copy</button>
-                  </div>
-                  <p class="tab-note">Downloads the release, checks its SHA-256, installs the app and links the <code>wick</code> command. Needs Node 18 or later.</p>
                 </div>
                 <div role="tabpanel" id="panel-download" aria-labelledby="tab-download" tabindex="0" hidden>
                   <a class="button" href="https://github.com/s1lvazxy/wick/releases/latest">Download from GitHub</a>

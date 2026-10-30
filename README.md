@@ -16,12 +16,6 @@ Wick is a menu bar app and CLI that keeps your Mac awake with the lid closed, so
 brew install --cask s1lvazxy/tap/wick
 ```
 
-Or with npm, which downloads the release and checks its SHA-256:
-
-```sh
-npx wick-mac
-```
-
 Or [download the zip](https://github.com/s1lvazxy/wick/releases/latest) and drag Wick to Applications. Early builds aren't notarised, so the first time, open **System Settings → Privacy & Security** and choose **Open Anyway**.
 
 Needs macOS 14 or later. Runs on Apple silicon and Intel.
