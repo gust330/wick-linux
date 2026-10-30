@@ -7,7 +7,7 @@ cask "wick" do
   desc "Keeps the computer awake with the lid closed"
   homepage "https://github.com/s1lvazxy/wick"
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Wick.app"
   binary "#{appdir}/Wick.app/Contents/Helpers/wick"
