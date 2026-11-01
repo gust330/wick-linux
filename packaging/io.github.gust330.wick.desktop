@@ -2,7 +2,7 @@
 Name=Wick
 GenericName=Lid-close Sleep Inhibitor
 Comment=Close the lid. Keep working. Keep your laptop awake with the lid closed.
-Exec=wick gui
+Exec=wick app
 Icon=wick
 Terminal=false
 Type=Application

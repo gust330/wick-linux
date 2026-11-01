@@ -65,12 +65,31 @@ wick on --agents        # stay awake until active coding agents finish
 wick on 8h --floor 30   # stop at 30% battery instead of default 20%
 wick run hermes         # stay awake while one command runs
 wick run ./build.sh     # stay awake for a build script
+wick app                # start the top bar menu indicator & floating panel
 wick off                # restore normal sleep immediately
 wick status             # display active session countdown and triggers
 wick status --json      # machine-readable telemetry
 wick agents             # list detected active AI coding agents
 wick doctor             # audit power, battery, thermal and logind status
 ```
+
+---
+
+## Top Bar & Visual UI (macOS Parity)
+
+Wick on Linux provides the exact visual experience of the macOS menu bar app:
+
+- **Top Bar Indicator (`wick app` or GNOME Shell Extension):**
+  - **Idle State:** Shows the subtle unlit Wick candle mark in the system top panel.
+  - **Awake State:** The candle mark turns into a glowing amber ember (`#FF8A3D`), accompanied by the live monospaced countdown clock in the top bar (e.g. `2h 05m`, `42m`, `<1m`, `∞`).
+- **Floating Panel UI:**
+  - Clicking the top bar item drops down a floating panel matching the original night instrument design.
+  - **Hero Clock:** 54px light monospaced clock with dynamic relative time caption (*"until 11:30 PM"*, *"or agents finish"*).
+  - **Circular Play/Stop Button:** 58px button with warm ember glow transition when engaged.
+  - **Duration Slider & Presets:** Quick capsule buttons (`30m`, `1h`, `2h`, `4h`, `8h`, `∞`) and interactive slider.
+  - **Conditions Card:** One-click toggle for coding agent awareness and live battery/thermal vitals.
+- **GNOME Shell Extension:**
+  - Included under `extensions/wick@gust330.github.io/` for native GNOME 45–50 top panel integration.
 
 ---
 

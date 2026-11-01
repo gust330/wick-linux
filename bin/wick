@@ -3,6 +3,14 @@ import os
 import sys
 from pathlib import Path
 
+# If running app/tray/gui and gi is not in current interpreter, re-exec with system python
+if len(sys.argv) > 1 and sys.argv[1] in ("app", "tray", "gui"):
+    try:
+        import gi
+    except ImportError:
+        if Path("/usr/bin/python3").exists() and sys.executable != "/usr/bin/python3":
+            os.execv("/usr/bin/python3", ["/usr/bin/python3"] + sys.argv)
+
 # Add src/ to Python module path
 root_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(root_dir / "src"))

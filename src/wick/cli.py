@@ -20,6 +20,7 @@ USAGE = """wick keeps your laptop awake with the lid closed.
   wick off                 back to normal sleep
   wick run <command...>    stay awake while a command runs, then go back to normal
   wick status [--json]     show the current state
+  wick app                 run the top bar menu indicator and floating panel
   wick agents              list the coding agents Wick can see right now
   wick doctor              diagnose power, battery, thermal and logind status
   wick setup               verify or configure permissions for sleep inhibition
@@ -243,9 +244,10 @@ def main() -> None:
             print("No agents running.")
     elif command == "guard":
         guard.run_guard()
-    elif command in ("gui", "app"):
-        from wick import ui
-        ui.launch_gui(executable)
+    elif command in ("app", "tray", "gui"):
+        # Launch using system python if available to ensure GTK3/AppIndicator bindings
+        from wick import tray
+        tray.launch_app(executable)
     elif command == "doctor":
         handle_doctor()
     elif command == "setup":
