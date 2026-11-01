@@ -7,3 +7,5 @@ snapshots/
 .DS_Store
 node_modules/
 *.tgz
+__pycache__/
+*.pyc

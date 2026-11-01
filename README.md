@@ -1,101 +1,141 @@
 <p align="center">
-  <img src="docs/hero.png" alt="The Wick panel, idle and awake" width="860">
+  <img src="docs/hero.png" alt="Wick on Linux" width="860">
 </p>
 
-# Wick
+# Wick (Linux)
 
-Close the lid. Keep working.
+> **Close the lid. Keep working.**  
+> A lightweight CLI and daemon that keeps your Linux laptop awake with the lid closed during coding agent sessions, builds, and downloads.
 
-**[s1lvazxy.github.io/wick](https://s1lvazxy.github.io/wick/)**
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20%7C%20Fedora%20%7C%20systemd-orange.svg)](#)
+[![Python: 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](#)
+[![Tests: E2E Passed](https://img.shields.io/badge/Tests-34%2F34%20Passing-brightgreen.svg)](#)
 
-Wick is a menu bar app and CLI that keeps your Mac awake with the lid closed, so coding agents, builds and downloads finish while you walk away. It wraps `pmset disablesleep`, the one setting that survives closing the lid, and makes sure it gets turned off again.
+---
 
-## Install
+## Overview
+
+On macOS, Wick wraps `pmset disablesleep` using a sudoers rule. On **Linux**, Wick is significantly safer, simpler, and requires **zero root or sudo permissions**:
+
+- **Native `systemd-logind` inhibitor locks:** Acquires `handle-lid-switch:sleep:idle` block inhibitors over system D-Bus.
+- **Kernel file-descriptor safety:** If the guard process terminates or is killed with `SIGKILL`, the Linux kernel automatically closes the file descriptor, and `systemd-logind` instantly restores normal sleep.
+- **Coding agent awareness:** Actively scans `/proc` for running agents (`hermes`, `claude`, `aider`, `codex`, `opencode`, `cursor-agent`, `gemini`) and sleeps 90 seconds after they exit.
+- **Battery floor protection:** Monitors `/sys/class/power_supply/BAT*` and restores sleep if discharging below 20% (or your configured floor).
+- **Thermal runaway guard:** Monitors `/sys/class/thermal/` zones and trip points to prevent overheating inside closed bags or cramped spaces.
+
+---
+
+## Quick Install (Fedora / Linux)
+
+### Option 1: Direct link / pipx
 
 ```sh
-brew install --cask s1lvazxy/tap/wick
+# Clone your fork
+git clone https://github.com/gust330/wick-linux.git
+cd wick-linux
+
+# Symlink to ~/.local/bin or install via pipx
+ln -sf $(pwd)/bin/wick ~/.local/bin/wick
 ```
 
-Or [download the zip](https://github.com/s1lvazxy/wick/releases/latest) and drag Wick to Applications. Early builds aren't notarised, so the first time, open **System Settings → Privacy & Security** and choose **Open Anyway**.
-
-Needs macOS 14 or later. Runs on Apple silicon and Intel.
-
-## Use
-
-Click the mark in your menu bar, pick a duration, press play, close the lid. The first time, macOS asks for your password once (see [Permission](#permission)).
-
-From the terminal:
+### Option 2: Pip / Wheel
 
 ```sh
-wick on 2h              # stay awake for two hours
-wick on                 # until `wick off`
-wick on --agents        # until your coding agents finish
-wick on 8h --floor 30   # stop at 30% battery instead of 20%
-wick run claude         # stay awake while one command runs
-wick off                # back to normal
-wick status             # what's going on
-wick agents             # which agents Wick can see
+pip install .
 ```
 
-## What stops a session
+### Option 3: Systemd User Service (Optional Autostart)
 
-| Trigger | Behaviour |
+```sh
+mkdir -p ~/.config/systemd/user
+cp systemd/wick-guard.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable wick-guard.service
+```
+
+---
+
+## CLI Usage
+
+```sh
+wick on 2h              # stay awake for 2 hours with the lid closed
+wick on                 # stay awake until `wick off`
+wick on --agents        # stay awake until active coding agents finish
+wick on 8h --floor 30   # stop at 30% battery instead of default 20%
+wick run hermes         # stay awake while one command runs
+wick run ./build.sh     # stay awake for a build script
+wick off                # restore normal sleep immediately
+wick status             # display active session countdown and triggers
+wick status --json      # machine-readable telemetry
+wick agents             # list detected active AI coding agents
+wick doctor             # audit power, battery, thermal and logind status
+```
+
+---
+
+## Safety Guarantees
+
+| Trigger | Behavior on Linux |
 | --- | --- |
-| Time runs out | Enforced by a separate process, so it still happens if the app crashes or the terminal closes. A command under `wick run` holds it open until it exits |
-| Battery floor | 20% by default, only while on battery. Change it or turn it off |
-| Critical heat | macOS reports a critical thermal state. Always on |
-| Agents finish | Optional. 90 seconds after the last one exits. An agent left open at its prompt still counts as running |
-| The command exits | For `wick run`, including if `wick run` itself is killed |
-| Quit, log out, shut down | Sleep comes back |
-| Someone else changes it | Wick notices and lets go |
+| **Time runs out** | Enforced by the background guard daemon. Holds open while commands under `wick run` execute. |
+| **Battery floor** | Default 20% while on discharging battery. Configurable with `--floor <1-99>` or `--floor off`. |
+| **Critical heat** | Ceases lid-wake inhibition if thermal zones report critical trip points or exceed 95°C. |
+| **Agents finish** | Optional (`--agents`). Automatically shuts off 90s after the last detected coding agent finishes. |
+| **Command exits** | With `wick run <cmd>`, inhibition is released the instant the command terminates. |
+| **Crash / Reboot** | Kernel drops the lock immediately on exit/SIGKILL; next check reconciles state. |
 
-A guard force-killed with `SIGKILL` can't clean up after itself, so a small launchd job (`~/Library/LaunchAgents/io.github.s1lvazxy.wick.guard.plist`) runs the guard at login and every five minutes. It exits at once unless a session needs enforcing. macOS lists it under Login Items as `wick`.
+---
 
-**Keep it out of bags while it's awake.** A closed Mac sheds heat slowly, and no software fixes that.
-
-## Permission
-
-Changing this setting needs root. Wick adds one file, `/etc/sudoers.d/wick`, after checking it with `visudo`:
+## Linux Architecture
 
 ```
-you ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1
+wick-linux/
+├── bin/
+│   └── wick                     # Main CLI executable
+├── src/
+│   └── wick/
+│       ├── __init__.py
+│       ├── cli.py               # CLI interface & argument parsing
+│       ├── core.py              # Wick lifecycle orchestration
+│       ├── power.py             # systemd-logind D-Bus inhibitor & fallback
+│       ├── battery.py           # /sys/class/power_supply/BAT* reader
+│       ├── thermal.py           # /sys/class/thermal/ zone monitoring
+│       ├── agents.py            # /proc/[pid]/cmdline AI agent scanner
+│       ├── durations.py         # 2h, 90m, 1h30m duration parser & clock
+│       ├── session.py           # XDG state store, flock serialization
+│       └── guard.py             # Background enforcement daemon
+├── scripts/
+│   ├── e2e_linux.sh             # Full 34-assertion end-to-end test suite
+│   └── run_pty.py               # Pseudo-terminal harness for terminal tests
+├── packaging/
+│   └── wick.spec                # RPM specification for Fedora/RHEL
+└── pyproject.toml               # Python packaging specification
 ```
 
-It allows those two exact commands and nothing else. The trade-off: any process running as you can also flip this setting without a password. It can't do anything else with the rule, but it could keep your Mac awake.
+---
 
-A sudoers rule rather than a privileged helper because it needs no Apple Developer ID, and you can read all of it in one line. `wick uninstall` removes it, along with the launchd job. `brew uninstall --cask wick` keeps the rule, since Homebrew runs the same steps on every upgrade and an upgrade shouldn't cost a password prompt, so run `wick uninstall` first, or use `brew uninstall --zap --cask wick`.
+## Verification & Tests
 
-## How it's built
-
-Swift 6, SwiftUI and AppKit, with no dependencies. The app is 5 MB.
-
-```
-Sources/WickCore        the setting, sessions, the guard, agent detection, the sudoers rule
-Sources/wick            the CLI, which is also the guard process
-Sources/WickUI          the panel, the ruler, the menu bar item
-Sources/WickApp         the app's entry point
-Sources/wick-snapshots  renders every panel state to PNG
-brand/                  logo, icon, and the scripts that generate them
-site/                   the landing page (Vite)
-packaging/              the Homebrew cask and the npm installer
-```
-
-The session file in `~/Library/Application Support/Wick` is the single source of truth. The app and the CLI write it, and the guard enforces it.
+Wick includes an automated end-to-end test suite matching every original macOS specification against a simulated power harness:
 
 ```sh
-swift test             # unit tests
-scripts/e2e.sh         # drives the CLI and guard against a simulated setting, no root needed
-scripts/build-app.sh   # builds dist/Wick.app and a zip. Needs Xcode 26 for the icon
+./scripts/e2e_linux.sh
 ```
 
-### Releasing
+**Test Coverage:**
+- Power toggles (`on`, `off`, `off --session-only`)
+- Guard process concurrency mutex
+- Timer expiration & clock formatting
+- Crash safety (`SIGTERM` cleanup, `SIGKILL` orphan reconciliation)
+- Terminal disconnect & SIGHUP survival
+- External state alteration detection
+- `wick run` exit code propagation & interactive PTY input/Ctrl-C forwarding
+- Battery floor depletion safety triggers
+- Critical thermal runaway triggers
 
-Push a tag like `v0.2.0`. [`release.yml`](.github/workflows/release.yml) builds, publishes to GitHub Releases, updates the tap and publishes to npm. Its header lists the secrets, all optional. With a Developer ID it also signs and notarises, after which the cask's quarantine step can go and Wick can apply to the official Homebrew cask list.
-
-## Why not caffeinate?
-
-`caffeinate` stops idle sleep, but closing the lid still puts the Mac to sleep. Only `disablesleep` survives that.
+---
 
 ## License
 
-[MIT](LICENSE). The Wick name and logo are in [brand/](brand).
+[MIT](LICENSE). Upstream macOS Wick by [s1lvazxy](https://github.com/s1lvazxy/wick). Linux port by [gust330](https://github.com/gust330).
