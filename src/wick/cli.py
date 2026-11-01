@@ -243,6 +243,9 @@ def main() -> None:
             print("No agents running.")
     elif command == "guard":
         guard.run_guard()
+    elif command in ("gui", "app"):
+        from wick import ui
+        ui.launch_gui(executable)
     elif command == "doctor":
         handle_doctor()
     elif command == "setup":
