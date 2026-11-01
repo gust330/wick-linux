@@ -469,19 +469,16 @@ class WickApp:
     def _build_menu(self):
         self.menu = Gtk.Menu()
 
-        self.item_status = Gtk.MenuItem(label="Wick: Sleeps when lid closes")
-        self.item_status.connect("activate", lambda m: self.toggle_panel())
-        self.menu.append(self.item_status)
+        # Connect menu "show": clicking the icon at the top immediately opens the Wick Panel!
+        self.menu.connect("show", self._on_menu_show)
+
+        # Quick action menu items (also available via right click)
+        item_toggle = Gtk.MenuItem(label="Toggle Wick Panel")
+        item_toggle.connect("activate", lambda m: self.toggle_panel())
+        self.menu.append(item_toggle)
 
         self.menu.append(Gtk.SeparatorMenuItem())
 
-        item_open = Gtk.MenuItem(label="Open Wick Panel…")
-        item_open.connect("activate", lambda m: self.toggle_panel())
-        self.menu.append(item_open)
-
-        self.menu.append(Gtk.SeparatorMenuItem())
-
-        # Quick action presets
         for label, mins in [("Stay Awake: 30m", 30), ("Stay Awake: 1h", 60), ("Stay Awake: 2h", 120), ("Stay Awake: Until Stopped (∞)", 0)]:
             item = Gtk.MenuItem(label=label)
             item.connect("activate", lambda m, minutes=mins: self._quick_start(minutes))
@@ -506,20 +503,50 @@ class WickApp:
         self.menu.show_all()
         self.indicator.set_menu(self.menu)
 
+    def _on_menu_show(self, menu):
+        # Automatically dismiss the plain menu and toggle the visual panel right below the icon
+        GLib.idle_add(menu.popdown)
+        GLib.idle_add(self.toggle_panel)
+
     def toggle_panel(self):
         if self.panel.get_visible():
             self.panel.hide()
         else:
             self.panel.update_state()
-            # Position at top right near panel
+
+            # Calculate anchor coordinates right below the clicked top bar icon
             display = Gdk.Display.get_default()
             monitor = display.get_primary_monitor() or display.get_monitor(0)
             geom = monitor.get_geometry()
-            x = geom.x + geom.width - 360
-            y = geom.y + 36  # Right below the top bar
+
+            panel_width = 340
+            target_x = geom.x + geom.width - panel_width - 16
+
+            seat = display.get_default_seat()
+            if seat:
+                pointer = seat.get_pointer()
+                if pointer:
+                    _, px, py = pointer.get_position()
+                    if px > 0:
+                        target_x = int(px - panel_width / 2)
+
+            min_x = geom.x + 12
+            max_x = geom.x + geom.width - panel_width - 12
+            x = max(min_x, min(target_x, max_x))
+            y = geom.y + 36 + 4  # Exactly 4px below the 36px top bar
+
+            self.panel.realize()
+            gdk_win = self.panel.get_window()
+            if gdk_win:
+                try:
+                    gdk_win.set_override_redirect(True)
+                except Exception:
+                    pass
+
             self.panel.move(x, y)
             self.panel.show_all()
             self.panel.present()
+            self.panel.grab_focus()
 
     def _quick_start(self, minutes: int, agents_only: bool = False):
         ends_at_iso = None
@@ -565,15 +592,12 @@ class WickApp:
                     rem = max(0.0, (ends_dt - now).total_seconds())
                     compact_str = durations.compact(rem)
                     self.indicator.set_label(compact_str, "guide")
-                    self.item_status.set_label(f"Awake with lid closed ({compact_str} left)")
             else:
                 self.indicator.set_label("ON", "guide")
-                self.item_status.set_label("Awake with lid closed (until stopped)")
         else:
             self.indicator.set_icon_full(IDLE_ICON, "Wick: sleeps when lid closes")
             self.indicator.set_label("", "")
             self.item_stop.set_sensitive(False)
-            self.item_status.set_label("Wick: Sleeps when lid closes")
 
     def run(self):
         Gtk.main()
