@@ -44,6 +44,7 @@ const WickIndicator = GObject.registerClass(
 class WickIndicator extends PanelMenu.Button {
     _init(extensionPath) {
         super._init(0.0, 'Wick');
+        this._clickGesture?.set_enabled(false);
         this._path = extensionPath;
         this._selectedMinutes = 120; // Default 2h
         this._stopWhenAgentsFinish = true;
@@ -76,6 +77,7 @@ class WickIndicator extends PanelMenu.Button {
         this.add_child(topBox);
 
         this._buildMenu();
+        this._buildQuickMenu();
         this._updateState();
 
         this._timerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
@@ -221,6 +223,63 @@ class WickIndicator extends PanelMenu.Button {
         container.add_child(card);
     }
 
+    _buildQuickMenu() {
+        this._quickMenu = new PopupMenu.PopupMenu(this, 0.0, St.Side.TOP);
+        this._quickMenu.actor.add_style_class_name('panel-menu');
+        Main.uiGroup.add_child(this._quickMenu.actor);
+        this._quickMenu.actor.hide();
+        Main.panel.menuManager.addMenu(this._quickMenu);
+
+        this._quickMenu.addAction('Open Wick Panel', () => this.menu.open());
+        this._quickMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._quickMenu.addAction('Stay Awake: 30m', () => this._quickStart(30));
+        this._quickMenu.addAction('Stay Awake: 1h', () => this._quickStart(60));
+        this._quickMenu.addAction('Stay Awake: 2h', () => this._quickStart(120));
+        this._quickMenu.addAction(
+            'Stay Awake: While Agents Run (--agents)',
+            () => this._quickStart(120, true)
+        );
+        this._quickMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._quickMenu.addAction('Stop Sleep Inhibition', () => {
+            this._runWickCmd(['off']);
+            this._scheduleStateUpdate();
+        });
+        this._quickMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._quickMenu.addAction('Quit Wick', () => this._runWickCmd(['off']));
+    }
+
+    _quickStart(minutes, agentsOnly = false) {
+        const args = ['on', `${minutes}m`];
+        if (agentsOnly)
+            args.push('--agents');
+        this._runWickCmd(args);
+        this._scheduleStateUpdate();
+    }
+
+    _scheduleStateUpdate() {
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+            this._updateState();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    vfunc_event(event) {
+        if (event.type() === Clutter.EventType.BUTTON_PRESS) {
+            const button = event.get_button();
+            if (button === 1) {
+                this._quickMenu?.close();
+                this.menu.toggle();
+                return Clutter.EVENT_STOP;
+            }
+            if (button === 3) {
+                this.menu.close();
+                this._quickMenu?.toggle();
+                return Clutter.EVENT_STOP;
+            }
+        }
+        return super.vfunc_event(event);
+    }
+
     _selectPreset(minutes, btnActor) {
         this._selectedMinutes = minutes;
         this._presetButtons.forEach(p => {
@@ -352,6 +411,11 @@ class WickIndicator extends PanelMenu.Button {
         if (this._timerId) {
             GLib.source_remove(this._timerId);
             this._timerId = 0;
+        }
+        if (this._quickMenu) {
+            Main.panel.menuManager.removeMenu(this._quickMenu);
+            this._quickMenu.destroy();
+            this._quickMenu = null;
         }
         super.destroy();
     }

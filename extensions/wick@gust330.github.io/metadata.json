@@ -8,7 +8,12 @@
     "47",
     "48",
     "49",
-    "50"
+    "50",
+    "51"
+  ],
+  "session-modes": [
+    "user",
+    "unlock-dialog"
   ],
   "url": "https://github.com/gust330/wick-linux",
   "version": 1
