@@ -25,11 +25,11 @@ Needs macOS 14 or later. Runs on Apple silicon and Intel.
 ### Linux
 
 ```sh
-pipx install "git+https://github.com/s1lvazxy/wick@v0.2.0#subdirectory=linux"
+pipx install "git+https://github.com/s1lvazxy/wick#subdirectory=linux"
 wick setup
 ```
 
-`wick setup` checks that the lock is allowed, adds the app launcher and, on GNOME, adds the top bar extension. On GNOME, log out and back in once so it can load, unless setup says it's already enabled. There's also an RPM on the [releases page](https://github.com/s1lvazxy/wick/releases/latest).
+`wick setup` checks that the lock is allowed, adds the app launcher and, on GNOME, adds the top bar extension. On GNOME, log out and back in once so it can load, unless setup says it's already enabled.
 
 Needs systemd-logind and Python 3.9 or later, so it works on Fedora, Ubuntu, Debian, Arch and most others. It doesn't work on distributions without systemd, like Alpine or Void. `wick doctor` tells you where your machine stands.
 
