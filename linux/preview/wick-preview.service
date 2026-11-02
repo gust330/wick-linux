@@ -1,0 +1,14 @@
+[Unit]
+Description=Wick preview desktop
+After=dbus.service systemd-logind.service user@1000.service
+
+[Service]
+User=dev
+PAMName=login
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/local/bin/start-desktop.sh
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

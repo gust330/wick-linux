@@ -72,12 +72,16 @@ public struct Session: Codable, Sendable, Equatable {
         }
     }
 
+    /// Whether the battery alone would end this session, which is worth knowing before starting it.
+    public func isAtBatteryFloor(_ battery: Battery?) -> Bool {
+        guard let batteryFloor, let battery else { return false }
+        return battery.isDischarging && battery.percent <= batteryFloor
+    }
+
     /// Safety outranks everything else the session asked for.
     public func endReason(in conditions: Conditions) -> EndReason? {
         if conditions.isOverheating { return .overheating }
-        if let batteryFloor, let battery = conditions.battery, battery.isDischarging, battery.percent <= batteryFloor {
-            return .lowBattery
-        }
+        if isAtBatteryFloor(conditions.battery) { return .lowBattery }
         // A command that's still running outlives the timer: `wick on 10m; wick run build` shouldn't sleep mid-build.
         if let endsAt, conditions.now >= endsAt, !conditions.anyHeldProcessAlive { return .timeUp }
         if endsWithHeldProcesses, !conditions.anyHeldProcessAlive { return .commandFinished }

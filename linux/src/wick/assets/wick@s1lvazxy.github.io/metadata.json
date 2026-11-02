@@ -1,0 +1,8 @@
+{
+  "name": "Wick",
+  "description": "Close the lid. Keep working. Keeps the laptop awake with the lid closed, from the top bar. Needs the wick command.",
+  "uuid": "wick@s1lvazxy.github.io",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/s1lvazxy/wick",
+  "version": 2
+}

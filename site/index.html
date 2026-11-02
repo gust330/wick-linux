@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Wick: keep your Mac awake with the lid closed</title>
+    <title>Wick: keep your laptop awake with the lid closed</title>
     <meta
       name="description"
-      content="Wick is a free, open source menu bar app that keeps your Mac awake with the lid closed, so coding agents and builds finish while you walk away."
+      content="Wick is a free, open source app for macOS and Linux that keeps your laptop awake with the lid closed, so coding agents and builds finish while you walk away."
     />
     <meta name="theme-color" content="#F7F4EF" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta property="og:title" content="Wick: close the lid, keep working" />
-    <meta property="og:description" content="A menu bar app that keeps your Mac awake with the lid closed, and always puts sleep back." />
+    <meta property="og:description" content="Keeps your Mac or Linux laptop awake with the lid closed, and always puts sleep back." />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://s1lvazxy.github.io/wick/og.png" />
     <meta property="og:url" content="https://s1lvazxy.github.io/wick/" />
@@ -50,8 +50,8 @@
 
             <div class="under">
               <p class="lede">
-                Wick keeps your Mac awake with the lid shut, so coding agents, builds and downloads finish while you
-                walk away. Free and open source.
+                Wick keeps your laptop awake with the lid shut, so coding agents, builds and downloads finish while you
+                walk away. Free and open source, for macOS and Linux.
               </p>
               <div class="under-actions">
                 <div class="command">
@@ -231,7 +231,7 @@
         <header class="section-head">
           <p class="eyebrow">Install</p>
           <h2 id="install-title">Four steps, about a minute.</h2>
-          <p class="section-note">Needs macOS 14 Sonoma or later. Runs on Apple silicon and Intel.</p>
+          <p class="section-note">On macOS 14 or later, Apple silicon or Intel. Or on Linux, with systemd.</p>
         </header>
 
         <ol class="steps">
@@ -244,6 +244,7 @@
                 <div role="tablist" aria-label="Install method">
                   <button role="tab" type="button" id="tab-brew" aria-controls="panel-brew" aria-selected="true">Homebrew</button>
                   <button role="tab" type="button" id="tab-download" aria-controls="panel-download" aria-selected="false" tabindex="-1">Download</button>
+                  <button role="tab" type="button" id="tab-linux" aria-controls="panel-linux" aria-selected="false" tabindex="-1">Linux</button>
                 </div>
                 <div role="tabpanel" id="panel-brew" aria-labelledby="tab-brew" tabindex="0">
                   <div class="command command-large">
@@ -259,6 +260,17 @@
                     <strong>System Settings → Privacy &amp; Security</strong> and choose <strong>Open Anyway</strong>.
                   </p>
                 </div>
+                <div role="tabpanel" id="panel-linux" aria-labelledby="tab-linux" tabindex="0" hidden>
+                  <div class="command command-large">
+                    <code>pipx install "git+https://github.com/s1lvazxy/wick@v0.2.0#subdirectory=linux" &amp;&amp; wick setup</code>
+                    <button class="copy" type="button" data-copy='pipx install "git+https://github.com/s1lvazxy/wick@v0.2.0#subdirectory=linux" &amp;&amp; wick setup'>Copy</button>
+                  </div>
+                  <p class="tab-note">
+                    Adds a top bar extension on GNOME, or run <code>wick app</code> elsewhere. Needs systemd-logind, and no
+                    root at all, so step 3 below doesn't apply. There's also an
+                    <a href="https://github.com/s1lvazxy/wick/releases/latest">RPM</a>.
+                  </p>
+                </div>
               </div>
             </div>
           </li>
@@ -267,7 +279,7 @@
             <span class="step-number" aria-hidden="true">/02</span>
             <div class="step-body">
               <h3>Open it and press play</h3>
-              <p>Wick lives in your menu bar, with no window and no Dock icon. Click the mark, pick a duration, press play.</p>
+              <p>Wick lives in your menu bar or top bar, with no window of its own. Click the mark, pick a duration, press play.</p>
             </div>
             <img class="step-shot" src="./shot-idle.webp" alt="The Wick panel showing 2:00 and a play button." width="680" height="682" loading="lazy" />
           </li>
@@ -277,8 +289,8 @@
             <div class="step-body">
               <h3>Allow it, once</h3>
               <p>
-                Only an admin can keep a closed Mac awake, so the first time, macOS asks for your password to add Wick's
-                one-line rule. You won't be asked again.
+                On a Mac, only an admin can keep a closed Mac awake, so the first time, macOS asks for your password to
+                add Wick's one-line rule. You won't be asked again. Linux skips this step.
               </p>
             </div>
             <img class="step-shot" src="./shot-access.webp" alt="The Wick panel asking for a one-time permission, with Not Now and Allow buttons." width="680" height="880" loading="lazy" />
@@ -325,8 +337,12 @@
               <p>Neither. It works on battery with nothing plugged in, and stops at the battery level you choose.</p>
             </details>
             <details>
+              <summary>Does it work over SSH on Linux?</summary>
+              <p>Only with a one-line polkit rule, because logind normally gives this lock to the person at the laptop. <code>wick doctor</code> prints the rule.</p>
+            </details>
+            <details>
               <summary>How do I remove it?</summary>
-              <p>Run <code>wick uninstall</code> to remove the rule, then <code>brew uninstall --cask wick</code>, or delete the app if you installed it by hand.</p>
+              <p>Run <code>wick uninstall</code>, then <code>brew uninstall --cask wick</code> or <code>pipx uninstall wick-linux</code>, or delete the app if you installed it by hand.</p>
             </details>
           </div>
         </div>

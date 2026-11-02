@@ -13,6 +13,8 @@ public enum Agents {
         "droid": "Droid",
         "gemini": "Gemini CLI",
         "goose": "Goose",
+        "hermes": "Hermes Agent",
+        "hermes-agent": "Hermes Agent",
         "opencode": "OpenCode",
         "qwen": "Qwen Code",
     ]

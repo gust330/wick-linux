@@ -345,7 +345,7 @@ public final class WickModel {
 
     private static func describe(_ error: any Error) -> String {
         switch error {
-        case PowerError.commandFailed(let detail): detail
+        case let error as PowerError: error.sentence
         case AccessError.failed(let detail): detail
         default: error.localizedDescription
         }

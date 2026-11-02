@@ -43,6 +43,19 @@ import Testing
         #expect(session.endReason(in: conditions(battery: .init(percent: 5, isDischarging: false))) == nil)
     }
 
+    @Test func `starting at the floor can be spotted up front`() {
+        let low = Battery(percent: 15, isDischarging: true)
+        let charging = Battery(percent: 15, isDischarging: false)
+        let plenty = Battery(percent: 21, isDischarging: true)
+        let withFloor = Session(batteryFloor: 20)
+        let withoutFloor = Session(batteryFloor: nil)
+        #expect(withFloor.isAtBatteryFloor(low) == true)
+        #expect(withFloor.isAtBatteryFloor(charging) == false)
+        #expect(withFloor.isAtBatteryFloor(plenty) == false)
+        #expect(withoutFloor.isAtBatteryFloor(low) == false)
+        #expect(withFloor.isAtBatteryFloor(nil) == false)
+    }
+
     @Test func `no floor means the battery is ignored`() {
         let session = Session(batteryFloor: nil)
         #expect(session.endReason(in: conditions(battery: .init(percent: 1, isDischarging: true))) == nil)

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Wick
+GenericName=Lid-close sleep control
+Comment=Close the lid. Keep working.
+Exec=wick app
+Icon=wick
+Terminal=false
+Type=Application
+Categories=Utility;System;
+Keywords=sleep;suspend;lid;power;caffeine;inhibit;agents;

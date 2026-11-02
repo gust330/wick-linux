@@ -12,12 +12,20 @@ public enum Wick {
         guardExecutable: URL,
         store: SessionStore = SessionStore()
     ) throws {
+        // The guard's first check would end this straight away, and whatever was counting on it would run unprotected.
+        let battery = Battery.current()
+        if session.isAtBatteryFloor(battery), let battery, let floor = session.batteryFloor {
+            throw PowerError.atBatteryFloor(percent: battery.percent, floor: floor)
+        }
+
         GuardAgent.install(executable: guardExecutable)
         try store.withLock {
             var session = session
-            // Starting over a session mustn't drop the commands that are relying on it.
-            if let running = store.load() {
-                session.heldPIDs = running.heldPIDs + session.heldPIDs.filter { !running.heldPIDs.contains($0) }
+            // Starting over a session mustn't drop the commands relying on it, but only ones still running: a dead
+            // PID copied into a new session could later belong to another process and hold the timer open forever.
+            if let running = store.load(), Guard.startedThisBoot(running) {
+                let stillHeld = running.heldPIDs.filter { !session.heldPIDs.contains($0) && Guard.isAlive($0) }
+                session.heldPIDs += stillHeld
             }
             try store.save(session)
             do {
@@ -40,6 +48,21 @@ public enum Wick {
         try store.withLock {
             try Power.setSleepDisabled(false)
             store.finish(reason)
+        }
+    }
+
+    /// A `wick run` finishing. Removing its hold and ending the session it created have to be one step, or a session
+    /// started in between would be ended too, after being told it was running.
+    public static func releaseHold(pid: Int32, store: SessionStore = SessionStore()) throws {
+        try store.withLock {
+            guard var session = store.load() else { return }
+            session.heldPIDs.removeAll { $0 == pid }
+            if session.endsWithHeldProcesses, session.heldPIDs.isEmpty {
+                try Power.setSleepDisabled(false)
+                store.finish(.commandFinished)
+            } else {
+                try store.save(session)
+            }
         }
     }
 
@@ -165,16 +188,17 @@ public enum Guard {
         }
     }
 
-    /// PIDs from before the last boot mean nothing, whatever process has them now.
-    private static func anyHeldProcessAlive(_ session: Session) -> Bool {
+    static func startedThisBoot(_ session: Session) -> Bool {
         var bootTime = timeval()
         var size = MemoryLayout<timeval>.size
         var query = [CTL_KERN, KERN_BOOTTIME]
-        if sysctl(&query, 2, &bootTime, &size, nil, 0) == 0,
-           session.startedAt.timeIntervalSince1970 < Double(bootTime.tv_sec) {
-            return false
-        }
-        return session.heldPIDs.contains(where: isAlive)
+        guard sysctl(&query, 2, &bootTime, &size, nil, 0) == 0 else { return true }
+        return session.startedAt.timeIntervalSince1970 >= Double(bootTime.tv_sec)
+    }
+
+    /// PIDs from before the last boot mean nothing, whatever process has them now.
+    private static func anyHeldProcessAlive(_ session: Session) -> Bool {
+        startedThisBoot(session) && session.heldPIDs.contains(where: isAlive)
     }
 
     /// One guard at a time. The kernel drops the lock when the process dies, however it dies.
@@ -191,7 +215,7 @@ public enum Guard {
         return false
     }
 
-    private static func isAlive(_ pid: Int32) -> Bool {
+    static func isAlive(_ pid: Int32) -> Bool {
         kill(pid, 0) == 0 || errno == EPERM
     }
 }

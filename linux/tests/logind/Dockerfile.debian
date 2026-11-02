@@ -1,0 +1,7 @@
+ARG BASE=debian:13
+FROM ${BASE}
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends systemd systemd-sysv udev dbus polkitd python3 python3-venv python3-pip procps perl util-linux libpam-systemd >/dev/null
+# udevd in a privileged container would act on the devices of the machine it runs on.
+RUN useradd -m dev; systemctl mask getty@tty1.service console-getty.service systemd-firstboot.service systemd-udevd.service systemd-udevd-kernel.socket systemd-udevd-control.socket systemd-udev-trigger.service systemd-udev-settle.service systemd-networkd.service systemd-resolved.service >/dev/null 2>&1; true
+CMD ["/sbin/init"]

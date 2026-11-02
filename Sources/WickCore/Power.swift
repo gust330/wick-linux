@@ -3,6 +3,18 @@ import Foundation
 public enum PowerError: Error, Equatable {
     case notAuthorized
     case commandFailed(String)
+    case atBatteryFloor(percent: Int, floor: Int)
+
+    public var sentence: String {
+        switch self {
+        case .notAuthorized:
+            "no permission yet. Run `wick setup` first."
+        case .commandFailed(let detail):
+            detail
+        case .atBatteryFloor(let percent, let floor):
+            "the battery is at \(percent)%, at or below the \(floor)% floor, so Wick would stop straight away. Plug in, or set a lower floor."
+        }
+    }
 }
 
 /// Reads and writes the one setting Wick exists for: `pmset disablesleep`.

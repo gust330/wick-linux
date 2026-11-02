@@ -14,7 +14,19 @@ permissions:
   contents: write
 
 jobs:
+  linux-packages:
+    runs-on: ubuntu-latest
+    container: fedora:42
+    steps:
+      - uses: actions/checkout@v5
+      - run: linux/packaging/build-packages.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: linux/dist/*
+
   release:
+    needs: linux-packages
     runs-on: macos-26
     env:
       HAS_SIGNING: ${{ secrets.DEVELOPER_ID_P12 != '' }}
@@ -32,6 +44,9 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           grep -q "wickVersion = \"$tag\"" Sources/WickCore/Durations.swift
           grep -q "\"version\": \"$tag\"" packaging/npm/package.json
+          grep -q "^version = \"$tag\"" linux/pyproject.toml
+          grep -q "^VERSION = \"$tag\"" linux/src/wick/durations.py
+          grep -q "^Version:  *$tag" linux/packaging/wick.spec
 
       - name: Import the signing certificate
         if: env.HAS_SIGNING == 'true'
@@ -68,13 +83,18 @@ jobs:
           ditto -c -k --keepParent dist/Wick.app "dist/Wick-$version.zip"
           (cd dist && shasum -a 256 "Wick-$version.zip" > "Wick-$version.zip.sha256")
 
+      - uses: actions/download-artifact@v5
+        with:
+          name: linux-packages
+          path: dist/linux
+
       - name: Publish to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
           gh release create "$GITHUB_REF_NAME" --generate-notes \
-            "dist/Wick-$version.zip" "dist/Wick-$version.zip.sha256"
+            "dist/Wick-$version.zip" "dist/Wick-$version.zip.sha256" dist/linux/*
 
       - name: Update the Homebrew tap
         if: env.HAS_TAP == 'true'

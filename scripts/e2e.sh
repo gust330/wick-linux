@@ -82,6 +82,11 @@ expect "off once it finishes" 0 "$(power)"
 expect "passes the exit code through" 7 "$code"
 sleep 0.2; pkill -f "$wick guard"; sleep 0.2
 
+output=$("$wick" run sh -c 'exit 127' 2>&1); code=$?
+expect "a command's own 127 passes through" 127 "$code"
+expect "with no made-up error" "" "$output"
+sleep 0.2; pkill -f "$wick guard"; sleep 0.2
+
 "$wick" run sh -c 'kill -9 $PPID; exec sleep 9' &
 held=$!
 sleep 7
