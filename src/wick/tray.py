@@ -1,22 +1,48 @@
-"""Top bar indicator and floating panel matching macOS Wick."""
+"""Top bar indicator and floating panel matching macOS Wick.
+
+Uses a native StatusNotifierItem over D-Bus (no AppIndicator3 dependency).
+Left-click opens/closes the Wick panel right below the GNOME top bar.
+Right-click opens a context menu.  Panel is positioned via Xwayland
+override_redirect to bypass Mutter move restrictions on Wayland.
+"""
 
 from __future__ import annotations
 from datetime import datetime, timezone
+import glob
 import math
 import os
 from pathlib import Path
 import sys
 
-# Ensure display environment variable under Wayland
-if "WAYLAND_DISPLAY" not in os.environ and Path("/run/user/1000/wayland-0").exists():
-    os.environ["WAYLAND_DISPLAY"] = "wayland-0"
+# ---------------------------------------------------------------------------
+# Environment setup — MUST happen before GTK/GDK is imported.
+# Force GDK to use the Xwayland X11 backend so that window.move() works
+# with override_redirect.
+# ---------------------------------------------------------------------------
+os.environ["GDK_BACKEND"] = "x11"
+
+# Point XAUTHORITY at Mutter's Xwayland cookie
+_xauth_matches = glob.glob("/run/user/1000/.mutter-Xwaylandauth.*")
+if _xauth_matches:
+    os.environ["XAUTHORITY"] = _xauth_matches[0]
+
+if "DISPLAY" not in os.environ:
+    os.environ["DISPLAY"] = ":0"
+
 if "XDG_RUNTIME_DIR" not in os.environ:
     os.environ["XDG_RUNTIME_DIR"] = "/run/user/1000"
 
+# ---------------------------------------------------------------------------
+# Now safe to import GTK / GDK
+# ---------------------------------------------------------------------------
 import gi
+gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
-gi.require_version("AppIndicator3", "0.1")
-from gi.repository import AppIndicator3, Gdk, GLib, Gtk
+from gi.repository import Gdk, GdkX11, GLib, Gtk
+
+import dbus
+import dbus.service
+import dbus.mainloop.glib
 
 from wick import agents, battery, core, durations, power, thermal
 from wick.session import EndReason, Session, SessionStore, parse_iso
@@ -24,6 +50,10 @@ from wick.session import EndReason, Session, SessionStore, parse_iso
 ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets"
 IDLE_ICON = str(ASSETS_DIR / "wick-idle.svg")
 AWAKE_ICON = str(ASSETS_DIR / "wick-awake.svg")
+
+# StatusNotifierItem icon helpers — stripped base names for the theme path
+_ICON_IDLE = "wick-idle"
+_ICON_AWAKE = "wick-awake"
 
 
 def get_css() -> bytes:
@@ -167,8 +197,8 @@ def get_css() -> bytes:
 
 
 class WickPanel(Gtk.Window):
-    def __init__(self, indicator_owner: WickApp, executable: str) -> None:
-        super().__init__(type=Gtk.WindowType.TOPLEVEL)
+    def __init__(self, indicator_owner: "WickApp", executable: str) -> None:
+        super().__init__(type=Gtk.WindowType.POPUP)
         self.indicator_owner = indicator_owner
         self.executable = executable
         self.store = SessionStore()
@@ -195,16 +225,81 @@ class WickPanel(Gtk.Window):
         self.battery_floor = 20
 
         self.connect("key-press-event", self._on_key_press)
-        self.connect("focus-out-event", lambda w, e: self.hide())
+        self.connect("button-press-event", self._on_button_press)
 
         self._build_ui()
         self.update_state()
 
     def _on_key_press(self, widget, event):
         if event.keyval == Gdk.KEY_Escape:
-            self.hide()
+            self._dismiss()
             return True
         return False
+
+    def _on_button_press(self, widget, event):
+        """Hide if the click lands outside the panel's allocation."""
+        alloc = self.get_allocation()
+        if (event.x < 0 or event.y < 0 or
+                event.x > alloc.width or event.y > alloc.height):
+            self._dismiss()
+            return True
+        return False
+
+    def _dismiss(self):
+        """Un-grab and hide."""
+        display = self.get_display()
+        try:
+            seat = display.get_default_seat()
+            if seat:
+                seat.ungrab()
+        except Exception:
+            try:
+                Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
+                Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+        self.hide()
+
+    def show_at(self, x: int, y: int):
+        """Show the panel at the given root coordinates and grab input."""
+        self.update_state()
+        self.realize()
+        gdk_win = self.get_window()
+        if gdk_win:
+            try:
+                gdk_win.set_override_redirect(True)
+            except Exception:
+                pass
+        self.move(x, y)
+        self.show_all()
+        self.present()
+        self.grab_focus()
+
+        # Grab pointer+keyboard so clicks outside dismiss the panel
+        gdk_win = self.get_window()
+        if gdk_win:
+            try:
+                display = self.get_display()
+                seat = display.get_default_seat()
+                if seat:
+                    seat.grab(
+                        gdk_win,
+                        Gdk.SeatCapabilities.ALL_POINTING | Gdk.SeatCapabilities.KEYBOARD,
+                        True,   # owner_events — let our widgets receive their events
+                        None,   # cursor
+                        None,   # event
+                        None, None,  # prepare_func, prepare_func_data
+                    )
+                else:
+                    # Fallback to legacy grabs
+                    Gdk.pointer_grab(
+                        gdk_win, True,
+                        Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK,
+                        None, None, Gdk.CURRENT_TIME,
+                    )
+                    Gdk.keyboard_grab(gdk_win, True, Gdk.CURRENT_TIME)
+            except Exception:
+                pass
 
     def _build_ui(self):
         self.main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
@@ -223,7 +318,7 @@ class WickPanel(Gtk.Window):
 
         close_btn = Gtk.Button(label="×")
         close_btn.get_style_context().add_class("wick-preset")
-        close_btn.connect("clicked", lambda b: self.hide())
+        close_btn.connect("clicked", lambda b: self._dismiss())
 
         status_row.pack_start(self.status_dot, False, False, 0)
         status_row.pack_start(self.status_label, True, True, 0)
@@ -435,6 +530,176 @@ class WickPanel(Gtk.Window):
                 self.caption_label.set_text(f"for {int(self.selected_minutes)}m")
 
 
+# ---------------------------------------------------------------------------
+# StatusNotifierItem D-Bus service
+# ---------------------------------------------------------------------------
+
+_SNI_IFACE = "org.kde.StatusNotifierItem"
+_SNI_PATH = "/StatusNotifierItem"
+_PROPS_IFACE = "org.freedesktop.DBus.Properties"
+_SNI_WATCHER_BUS = "org.kde.StatusNotifierWatcher"
+_SNI_WATCHER_PATH = "/StatusNotifierWatcher"
+
+_SNI_XML = f"""
+<node>
+  <interface name="{_SNI_IFACE}">
+    <method name="Activate">
+      <arg direction="in"  type="i" name="x"/>
+      <arg direction="in"  type="i" name="y"/>
+    </method>
+    <method name="SecondaryActivate">
+      <arg direction="in"  type="i" name="x"/>
+      <arg direction="in"  type="i" name="y"/>
+    </method>
+    <method name="ContextMenu">
+      <arg direction="in"  type="i" name="x"/>
+      <arg direction="in"  type="i" name="y"/>
+    </method>
+    <method name="Scroll">
+      <arg direction="in"  type="i" name="delta"/>
+      <arg direction="in"  type="s" name="orientation"/>
+    </method>
+    <signal name="NewIcon"/>
+    <signal name="NewTitle"/>
+    <signal name="NewStatus">
+      <arg type="s"/>
+    </signal>
+    <signal name="NewToolTip"/>
+  </interface>
+</node>
+"""
+
+
+class StatusNotifierItem(dbus.service.Object):
+    """Minimal StatusNotifierItem exposing icon, Activate and ContextMenu."""
+
+    def __init__(self, bus: dbus.Bus, bus_name: str, app: "WickApp"):
+        self._app = app
+        self._bus_name_str = bus_name
+        self._icon_name = _ICON_IDLE
+        self._title = "Wick"
+        self._status = "Active"
+        self._tooltip_title = "Wick: sleeps when lid closes"
+        self._icon_theme_path = str(ASSETS_DIR)
+        self._object_path = _SNI_PATH
+
+        # Claim a well-known name for this item
+        self._dbus_name = dbus.service.BusName(bus_name, bus)
+        super().__init__(self._dbus_name, self._object_path)
+
+    # ---- D-Bus methods (org.kde.StatusNotifierItem) ----
+
+    @dbus.service.method(_SNI_IFACE, in_signature="ii")
+    def Activate(self, x: int, y: int):
+        """Left-click: toggle the panel right below the top bar."""
+        GLib.idle_add(self._app.toggle_panel, int(x), int(y))
+
+    @dbus.service.method(_SNI_IFACE, in_signature="ii")
+    def SecondaryActivate(self, x: int, y: int):
+        """Middle-click or secondary action: show context menu."""
+        GLib.idle_add(self._app.show_context_menu, int(x), int(y))
+
+    @dbus.service.method(_SNI_IFACE, in_signature="ii")
+    def ContextMenu(self, x: int, y: int):
+        """Right-click: show context menu."""
+        GLib.idle_add(self._app.show_context_menu, int(x), int(y))
+
+    @dbus.service.method(_SNI_IFACE, in_signature="is")
+    def Scroll(self, delta: int, orientation: str):
+        pass  # ignored
+
+    # ---- Signals ----
+
+    @dbus.service.signal(_SNI_IFACE)
+    def NewIcon(self):
+        pass
+
+    @dbus.service.signal(_SNI_IFACE)
+    def NewTitle(self):
+        pass
+
+    @dbus.service.signal(_SNI_IFACE, signature="s")
+    def NewStatus(self, status: str):
+        pass
+
+    @dbus.service.signal(_SNI_IFACE)
+    def NewToolTip(self):
+        pass
+
+    # ---- org.freedesktop.DBus.Properties ----
+
+    @dbus.service.method(_PROPS_IFACE, in_signature="ss", out_signature="v")
+    def Get(self, interface: str, prop: str):
+        if interface != _SNI_IFACE:
+            raise dbus.exceptions.DBusException(
+                f"No such interface: {interface}",
+                name="org.freedesktop.DBus.Error.UnknownInterface",
+            )
+        return self._get_prop(prop)
+
+    @dbus.service.method(_PROPS_IFACE, in_signature="s", out_signature="a{sv}")
+    def GetAll(self, interface: str):
+        if interface != _SNI_IFACE:
+            return dbus.Dictionary({}, signature="sv")
+        props = {}
+        for name in (
+            "Category", "Id", "Title", "Status", "IconName",
+            "IconThemePath", "ToolTip", "ItemIsMenu",
+            "Menu",
+        ):
+            try:
+                props[name] = self._get_prop(name)
+            except Exception:
+                pass
+        return dbus.Dictionary(props, signature="sv")
+
+    @dbus.service.method(_PROPS_IFACE, in_signature="ssv")
+    def Set(self, interface: str, prop: str, value):
+        pass  # read-only
+
+    def _get_prop(self, name: str):
+        _map = {
+            "Category": dbus.String("ApplicationStatus"),
+            "Id": dbus.String("wick-app"),
+            "Title": dbus.String(self._title),
+            "Status": dbus.String(self._status),
+            "IconName": dbus.String(self._icon_name),
+            "OverlayIconName": dbus.String(""),
+            "AttentionIconName": dbus.String(""),
+            "IconThemePath": dbus.String(self._icon_theme_path),
+            "ItemIsMenu": dbus.Boolean(False),
+            "Menu": dbus.ObjectPath("/NO_DBUSMENU"),
+            "ToolTip": dbus.Struct(
+                (dbus.String(self._icon_name),
+                 dbus.Array([], signature="(iiay)"),
+                 dbus.String(self._tooltip_title),
+                 dbus.String("")),
+                signature=None,
+            ),
+        }
+        if name not in _map:
+            raise dbus.exceptions.DBusException(
+                f"No such property: {name}",
+                name="org.freedesktop.DBus.Error.UnknownProperty",
+            )
+        return _map[name]
+
+    # ---- Public helpers for the WickApp ----
+
+    def set_icon(self, icon_name: str, tooltip: str):
+        changed = self._icon_name != icon_name
+        self._icon_name = icon_name
+        self._tooltip_title = tooltip
+        if changed:
+            self.NewIcon()
+            self.NewToolTip()
+
+    def set_title(self, title: str):
+        if title != self._title:
+            self._title = title
+            self.NewTitle()
+
+
 class WickApp:
     def __init__(self, executable: str) -> None:
         self.executable = executable
@@ -452,34 +717,44 @@ class WickApp:
         # Create panel window
         self.panel = WickPanel(self, executable)
 
-        # Create AppIndicator (top bar tray item)
-        self.indicator = AppIndicator3.Indicator.new(
-            "wick-app",
-            IDLE_ICON,
-            AppIndicator3.IndicatorCategory.APPLICATION_STATUS,
-        )
-        self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+        # --- D-Bus: StatusNotifierItem ----
+        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+        self._session_bus = dbus.SessionBus()
 
-        self._build_menu()
+        self._sni_bus_name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
+        self._sni = StatusNotifierItem(self._session_bus, self._sni_bus_name, self)
+
+        # Register with the StatusNotifierWatcher
+        try:
+            watcher = self._session_bus.get_object(_SNI_WATCHER_BUS, _SNI_WATCHER_PATH)
+            watcher.RegisterStatusNotifierItem(
+                self._sni_bus_name,
+                dbus_interface="org.kde.StatusNotifierWatcher",
+            )
+        except dbus.exceptions.DBusException:
+            # Watcher might not be running yet; GNOME shell extension may
+            # pick up the well-known name automatically.
+            pass
+
+        # Build context menu (right-click)
+        self._build_context_menu()
+
         self.update_indicator()
 
         # Periodic refresh every 1 second
         GLib.timeout_add_seconds(1, self._on_tick)
 
-    def _build_menu(self):
+    def _build_context_menu(self):
         self.menu = Gtk.Menu()
 
-        # Connect menu "show": clicking the icon at the top immediately opens the Wick Panel!
-        self.menu.connect("show", self._on_menu_show)
-
-        # Quick action menu items (also available via right click)
         item_toggle = Gtk.MenuItem(label="Toggle Wick Panel")
         item_toggle.connect("activate", lambda m: self.toggle_panel())
         self.menu.append(item_toggle)
 
         self.menu.append(Gtk.SeparatorMenuItem())
 
-        for label, mins in [("Stay Awake: 30m", 30), ("Stay Awake: 1h", 60), ("Stay Awake: 2h", 120), ("Stay Awake: Until Stopped (∞)", 0)]:
+        for label, mins in [("Stay Awake: 30m", 30), ("Stay Awake: 1h", 60),
+                            ("Stay Awake: 2h", 120), ("Stay Awake: Until Stopped (∞)", 0)]:
             item = Gtk.MenuItem(label=label)
             item.connect("activate", lambda m, minutes=mins: self._quick_start(minutes))
             self.menu.append(item)
@@ -501,52 +776,51 @@ class WickApp:
         self.menu.append(item_quit)
 
         self.menu.show_all()
-        self.indicator.set_menu(self.menu)
 
-    def _on_menu_show(self, menu):
-        # Automatically dismiss the plain menu and toggle the visual panel right below the icon
-        GLib.idle_add(menu.popdown)
-        GLib.idle_add(self.toggle_panel)
+    def show_context_menu(self, x: int = 0, y: int = 0):
+        """Pop up the right-click context menu."""
+        self.menu.popup(None, None, None, None, 0, Gtk.get_current_event_time())
 
-    def toggle_panel(self):
+    def toggle_panel(self, click_x: int = 0, click_y: int = 0):
+        """Toggle panel visibility.  (x, y) are the pointer coords from D-Bus Activate."""
         if self.panel.get_visible():
-            self.panel.hide()
-        else:
-            self.panel.update_state()
+            self.panel._dismiss()
+            return
 
-            # Calculate anchor coordinates right below the clicked top bar icon
-            display = Gdk.Display.get_default()
-            monitor = display.get_primary_monitor() or display.get_monitor(0)
+        self.panel.update_state()
+
+        # Calculate position right below the 36px GNOME top bar
+        display = Gdk.Display.get_default()
+        screen = Gdk.Screen.get_default()
+        monitor_nr = 0
+        if screen:
+            monitor_nr = screen.get_primary_monitor()
+            if monitor_nr < 0:
+                monitor_nr = 0
+
+        panel_width = 340
+        # Get monitor geometry
+        try:
+            monitor = display.get_monitor(monitor_nr)
             geom = monitor.get_geometry()
+        except Exception:
+            # Fallback: use screen dimensions
+            geom = type("G", (), {"x": 0, "y": 0,
+                                   "width": screen.get_width() if screen else 1920,
+                                   "height": screen.get_height() if screen else 1080})()
 
-            panel_width = 340
+        # Default: right-align with some margin, but center on pointer if available
+        if click_x > 0:
+            target_x = click_x - panel_width // 2
+        else:
             target_x = geom.x + geom.width - panel_width - 16
 
-            seat = display.get_default_seat()
-            if seat:
-                pointer = seat.get_pointer()
-                if pointer:
-                    _, px, py = pointer.get_position()
-                    if px > 0:
-                        target_x = int(px - panel_width / 2)
+        min_x = geom.x + 12
+        max_x = geom.x + geom.width - panel_width - 12
+        x = max(min_x, min(target_x, max_x))
+        y = geom.y + 36 + 4  # 4px below the 36px top bar
 
-            min_x = geom.x + 12
-            max_x = geom.x + geom.width - panel_width - 12
-            x = max(min_x, min(target_x, max_x))
-            y = geom.y + 36 + 4  # Exactly 4px below the 36px top bar
-
-            self.panel.realize()
-            gdk_win = self.panel.get_window()
-            if gdk_win:
-                try:
-                    gdk_win.set_override_redirect(True)
-                except Exception:
-                    pass
-
-            self.panel.move(x, y)
-            self.panel.show_all()
-            self.panel.present()
-            self.panel.grab_focus()
+        self.panel.show_at(x, y)
 
     def _quick_start(self, minutes: int, agents_only: bool = False):
         ends_at_iso = None
@@ -582,7 +856,7 @@ class WickApp:
         session = self.store.load()
 
         if awake and session:
-            self.indicator.set_icon_full(AWAKE_ICON, "Wick: awake with lid closed")
+            self._sni.set_icon(_ICON_AWAKE, "Wick: awake with lid closed")
             self.item_stop.set_sensitive(True)
 
             if session.endsAt:
@@ -591,12 +865,12 @@ class WickApp:
                     now = datetime.now(timezone.utc)
                     rem = max(0.0, (ends_dt - now).total_seconds())
                     compact_str = durations.compact(rem)
-                    self.indicator.set_label(compact_str, "guide")
+                    self._sni.set_title(f"Wick — {compact_str}")
             else:
-                self.indicator.set_label("ON", "guide")
+                self._sni.set_title("Wick — ON")
         else:
-            self.indicator.set_icon_full(IDLE_ICON, "Wick: sleeps when lid closes")
-            self.indicator.set_label("", "")
+            self._sni.set_icon(_ICON_IDLE, "Wick: sleeps when lid closes")
+            self._sni.set_title("Wick")
             self.item_stop.set_sensitive(False)
 
     def run(self):
