@@ -691,7 +691,7 @@ class DBusMenu(dbus.service.Object):
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="iias", out_signature="u(ia{sv}av)")
     def GetLayout(self, parent_id: int, recursion_depth: int, property_names):
-        return dbus.UInt32(1), self._root_layout(self._show_quick_menu)
+        return dbus.UInt32(1), self._root_layout(True)
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="aias", out_signature="a(ia{sv})")
     def GetGroupProperties(self, ids, property_names):
@@ -728,13 +728,7 @@ class DBusMenu(dbus.service.Object):
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="i", out_signature="b")
     def AboutToShow(self, item_id: int):
-        if int(item_id) != 0:
-            return dbus.Boolean(False)
-        self._show_quick_menu = self._is_right_click()
-        if self._show_quick_menu:
-            return dbus.Boolean(False)
-        GLib.idle_add(self._app.toggle_panel_at_pointer)
-        return dbus.Boolean(True)
+        return dbus.Boolean(False)
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="ai", out_signature="aiai")
     def AboutToShowGroup(self, ids):
