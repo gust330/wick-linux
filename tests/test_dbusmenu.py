@@ -61,7 +61,10 @@ def _load_dbus_menu():
         Struct=lambda values=(), **kwargs: tuple(values),
         exceptions=types.SimpleNamespace(DBusException=Exception),
     )
-    glib = types.SimpleNamespace(idle_add=lambda callback, *args: callback(*args))
+    glib = types.SimpleNamespace(
+        idle_add=lambda callback, *args: callback(*args),
+        timeout_add=lambda interval, callback: 1,
+    )
     gtk = types.SimpleNamespace(main_quit=lambda: None)
     gdk = types.SimpleNamespace(
         Display=types.SimpleNamespace(
@@ -70,7 +73,7 @@ def _load_dbus_menu():
             )
         ),
         get_default_root_window=lambda: _RootWindow(),
-        ModifierType=types.SimpleNamespace(BUTTON3_MASK=4),
+        ModifierType=types.SimpleNamespace(BUTTON1_MASK=1, BUTTON3_MASK=4),
     )
     namespace = {
         "dbus": dbus,
@@ -92,6 +95,9 @@ class DBusMenuActivationTests(unittest.TestCase):
         app = _App()
         menu = _load_dbus_menu()(object(), app)
         menu._activation_ready_at = 0
+        menu._dismiss_shell_menu = lambda: setattr(
+            menu, "escape_presses", getattr(menu, "escape_presses", 0) + 1
+        )
         return menu, app
 
     def test_about_to_show_then_opened_toggles_only_once(self):
@@ -128,20 +134,29 @@ class DBusMenuActivationTests(unittest.TestCase):
     def test_right_click_returns_full_menu_without_opening_panel(self):
         menu, app = self.make_menu()
         _PointerState.mask = 4
-        try:
-            menu.AboutToShow(0)
-            _revision, root = menu.GetLayout(0, -1, [])
-        finally:
-            _PointerState.mask = 0
+        menu._poll_pointer_buttons()
+        _PointerState.mask = 0
+        menu.AboutToShow(0)
+        _revision, root = menu.GetLayout(0, -1, [])
         self.assertEqual(app.pointer_toggles, 0)
+        self.assertEqual(getattr(menu, "escape_presses", 0), 0)
         self.assertEqual(len(root[2]), 10)
 
-    def test_left_click_opens_panel_and_returns_empty_menu(self):
+    def test_left_click_opens_panel_dismisses_shell_menu_and_keeps_full_layout(self):
         menu, app = self.make_menu()
+        _PointerState.mask = 1
+        menu._poll_pointer_buttons()
+        _PointerState.mask = 0
         menu.AboutToShow(0)
         _revision, root = menu.GetLayout(0, -1, [])
         self.assertEqual(app.pointer_toggles, 1)
-        self.assertEqual(root[2], [])
+        self.assertEqual(menu.escape_presses, 1)
+        self.assertEqual(len(root[2]), 10)
+
+    def test_get_layout_is_always_full_even_without_click_state(self):
+        menu, _app = self.make_menu()
+        _revision, root = menu.GetLayout(0, -1, [])
+        self.assertEqual(len(root[2]), 10)
 
     def test_layout_exposes_complete_visible_context_menu(self):
         menu, _app = self.make_menu()

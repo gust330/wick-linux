@@ -7,6 +7,7 @@ override_redirect to bypass Mutter move restrictions on Wayland.
 """
 
 from __future__ import annotations
+import ctypes
 from datetime import datetime, timezone
 import glob
 import math
@@ -611,38 +612,69 @@ class DBusMenu(dbus.service.Object):
         self._app = app
         self._activation_ready_at = time.monotonic() + 1.5
         self._last_activation_at = 0.0
-        self._primary_activation_at = 0.0
-        self._show_context_menu = False
+        self._last_button1_time = 0.0
+        self._last_button3_time = 0.0
         super().__init__(dbus_name, _DBUSMENU_PATH)
+        GLib.timeout_add(20, self._poll_pointer_buttons)
 
-    @staticmethod
-    def _is_right_click():
-        """Return whether button 3 is held during the menu request."""
+    def _poll_pointer_buttons(self):
+        """Remember the latest physical tray button while GNOME owns the event."""
         try:
+            root = Gdk.get_default_root_window()
             display = Gdk.Display.get_default()
             seat = display.get_default_seat() if display else None
             pointer = seat.get_pointer() if seat else None
-            root = Gdk.get_default_root_window()
-            mask = 0
             if root and pointer:
                 _window, _x, _y, mask = root.get_device_position(pointer)
-            return bool(mask & Gdk.ModifierType.BUTTON3_MASK)
+                now = time.monotonic()
+                if mask & Gdk.ModifierType.BUTTON1_MASK:
+                    self._last_button1_time = now
+                if mask & Gdk.ModifierType.BUTTON3_MASK:
+                    self._last_button3_time = now
         except Exception:
-            return False
+            pass
+        return True
 
     def mark_primary_activation(self):
-        """Record SNI Activate so its following DBusMenu probe stays hidden."""
+        """Record SNI Activate as an explicit left-click activation."""
         now = time.monotonic()
-        self._primary_activation_at = now
+        self._last_button1_time = now
         self._last_activation_at = now
-        self._show_context_menu = False
 
     def _interaction_is_right_click(self):
-        if time.monotonic() - self._primary_activation_at < 0.5:
-            self._show_context_menu = False
-        elif self._is_right_click():
-            self._show_context_menu = True
-        return self._show_context_menu
+        now = time.monotonic()
+        return (
+            self._last_button3_time > self._last_button1_time
+            and now - self._last_button3_time < 0.6
+        )
+
+    @staticmethod
+    def _dismiss_shell_menu():
+        """Send Escape through XTest so GNOME closes its DBusMenu popup."""
+        display = None
+        x11 = None
+        try:
+            x11 = ctypes.CDLL("libX11.so.6")
+            xtst = ctypes.CDLL("libXtst.so.6")
+            x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+            x11.XOpenDisplay.restype = ctypes.c_void_p
+            x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+            x11.XFlush.argtypes = [ctypes.c_void_p]
+            xtst.XTestFakeKeyEvent.argtypes = [
+                ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong
+            ]
+            xtst.XTestFakeKeyEvent.restype = ctypes.c_int
+            display = x11.XOpenDisplay(None)
+            if not display:
+                return
+            xtst.XTestFakeKeyEvent(display, 9, True, 0)
+            xtst.XTestFakeKeyEvent(display, 9, False, 0)
+            x11.XFlush(display)
+        except (AttributeError, OSError):
+            pass
+        finally:
+            if display and x11:
+                x11.XCloseDisplay(display)
 
     def _activate_from_root_event(self):
         """Toggle once for either ordering of GNOME's two async calls."""
@@ -650,6 +682,7 @@ class DBusMenu(dbus.service.Object):
         if now < self._activation_ready_at or now - self._last_activation_at < 0.25:
             return
         self._last_activation_at = now
+        self._dismiss_shell_menu()
         GLib.idle_add(self._app.toggle_panel_at_pointer)
 
     @staticmethod
@@ -686,21 +719,9 @@ class DBusMenu(dbus.service.Object):
             signature="ia{sv}av",
         )
 
-    @staticmethod
-    def _empty_layout():
-        return dbus.Struct(
-            (
-                dbus.Int32(0),
-                dbus.Dictionary({}, signature="sv"),
-                dbus.Array([], signature="v"),
-            ),
-            signature="ia{sv}av",
-        )
-
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="iias", out_signature="u(ia{sv}av)")
     def GetLayout(self, parent_id: int, recursion_depth: int, property_names):
-        layout = self._root_layout() if self._interaction_is_right_click() else self._empty_layout()
-        return dbus.UInt32(1), layout
+        return dbus.UInt32(1), self._root_layout()
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="aias", out_signature="a(ia{sv})")
     def GetGroupProperties(self, ids, property_names):
@@ -816,6 +837,7 @@ class StatusNotifierItem(dbus.service.Object):
         menu = getattr(self._app, "_dbus_menu", None)
         if menu:
             menu.mark_primary_activation()
+            menu._dismiss_shell_menu()
         GLib.idle_add(self._app.toggle_panel, int(x), int(y))
 
     @dbus.service.method(_SNI_IFACE, in_signature="ii")
