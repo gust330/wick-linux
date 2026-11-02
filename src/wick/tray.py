@@ -539,6 +539,9 @@ _SNI_PATH = "/StatusNotifierItem"
 _PROPS_IFACE = "org.freedesktop.DBus.Properties"
 _SNI_WATCHER_BUS = "org.kde.StatusNotifierWatcher"
 _SNI_WATCHER_PATH = "/StatusNotifierWatcher"
+_DBUSMENU_IFACE = "com.canonical.dbusmenu"
+_DBUSMENU_PATH = "/MenuBar"
+_DBUSMENU_PROPS_IFACE = "org.freedesktop.DBus.Properties"
 
 _SNI_XML = f"""
 <node>
@@ -568,6 +571,114 @@ _SNI_XML = f"""
   </interface>
 </node>
 """
+
+
+class DBusMenu(dbus.service.Object):
+    """Tiny DBusMenu bridge used by GNOME for primary-click activation."""
+
+    def __init__(self, dbus_name: dbus.service.BusName, app: "WickApp"):
+        self._app = app
+        self._opening = False
+        super().__init__(dbus_name, _DBUSMENU_PATH)
+
+    @staticmethod
+    def _root_layout():
+        root_props = dbus.Dictionary(
+            {"children-display": dbus.String("submenu")}, signature="sv"
+        )
+        item_props = dbus.Dictionary(
+            {"label": dbus.String("Open Wick"), "visible": dbus.Boolean(False)},
+            signature="sv",
+        )
+        child = dbus.Struct(
+            (dbus.Int32(1), item_props, dbus.Array([], signature="v")),
+            signature="ia{sv}av",
+        )
+        return dbus.Struct(
+            (dbus.Int32(0), root_props, dbus.Array([child], signature="v")),
+            signature="ia{sv}av",
+        )
+
+    @dbus.service.method(_DBUSMENU_IFACE, in_signature="iias", out_signature="u(ia{sv}av)")
+    def GetLayout(self, parent_id: int, recursion_depth: int, property_names):
+        return dbus.UInt32(1), self._root_layout()
+
+    @dbus.service.method(_DBUSMENU_IFACE, in_signature="aias", out_signature="a(ia{sv})")
+    def GetGroupProperties(self, ids, property_names):
+        return dbus.Array([], signature="(ia{sv})")
+
+    @dbus.service.method(_DBUSMENU_IFACE, in_signature="is", out_signature="v")
+    def GetProperty(self, item_id: int, name: str):
+        return dbus.String("")
+
+    @dbus.service.method(_DBUSMENU_IFACE, in_signature="isvu")
+    def Event(self, item_id: int, event_id: str, data, timestamp: int):
+        # GNOME sends "opened" immediately before AboutToShow when a click
+        # opens the menu.  The initial AboutToShow during menu discovery must
+        # not open Wick at login, so arm activation only for that event.
+        if int(item_id) == 0 and str(event_id) == "opened":
+            self._opening = True
+        elif int(item_id) == 1 and str(event_id) == "clicked":
+            GLib.idle_add(self._app.toggle_panel)
+
+    @dbus.service.method(_DBUSMENU_IFACE, in_signature="a(isvu)", out_signature="ai")
+    def EventGroup(self, events):
+        for item_id, event_id, data, timestamp in events:
+            self.Event(item_id, event_id, data, timestamp)
+        return dbus.Array([], signature="i")
+
+    @dbus.service.method(_DBUSMENU_IFACE, in_signature="i", out_signature="b")
+    def AboutToShow(self, item_id: int):
+        if int(item_id) == 0 and self._opening:
+            self._opening = False
+            GLib.idle_add(self._app.toggle_panel_at_pointer)
+        return dbus.Boolean(False)
+
+    @dbus.service.method(_DBUSMENU_IFACE, in_signature="ai", out_signature="aiai")
+    def AboutToShowGroup(self, ids):
+        updates = []
+        for item_id in ids:
+            if self.AboutToShow(item_id):
+                updates.append(item_id)
+        return dbus.Array(updates, signature="i"), dbus.Array([], signature="i")
+
+    @dbus.service.method(_DBUSMENU_PROPS_IFACE, in_signature="ss", out_signature="v")
+    def Get(self, interface: str, prop: str):
+        if interface != _DBUSMENU_IFACE:
+            raise dbus.exceptions.DBusException(
+                f"No such interface: {interface}",
+                name="org.freedesktop.DBus.Error.UnknownInterface",
+            )
+        return self._get_prop(prop)
+
+    @dbus.service.method(_DBUSMENU_PROPS_IFACE, in_signature="s", out_signature="a{sv}")
+    def GetAll(self, interface: str):
+        if interface != _DBUSMENU_IFACE:
+            return dbus.Dictionary({}, signature="sv")
+        return dbus.Dictionary(
+            {name: self._get_prop(name) for name in
+             ("Version", "TextDirection", "Status", "IconThemePath")},
+            signature="sv",
+        )
+
+    @dbus.service.method(_DBUSMENU_PROPS_IFACE, in_signature="ssv")
+    def Set(self, interface: str, prop: str, value):
+        pass
+
+    @staticmethod
+    def _get_prop(name: str):
+        props = {
+            "Version": dbus.UInt32(3),
+            "TextDirection": dbus.String("ltr"),
+            "Status": dbus.String("normal"),
+            "IconThemePath": dbus.Array([], signature="s"),
+        }
+        if name not in props:
+            raise dbus.exceptions.DBusException(
+                f"No such property: {name}",
+                name="org.freedesktop.DBus.Error.UnknownProperty",
+            )
+        return props[name]
 
 
 class StatusNotifierItem(dbus.service.Object):
@@ -668,7 +779,7 @@ class StatusNotifierItem(dbus.service.Object):
             "AttentionIconName": dbus.String(""),
             "IconThemePath": dbus.String(self._icon_theme_path),
             "ItemIsMenu": dbus.Boolean(False),
-            "Menu": dbus.ObjectPath("/NO_DBUSMENU"),
+            "Menu": dbus.ObjectPath(_DBUSMENU_PATH),
             "ToolTip": dbus.Struct(
                 (dbus.String(self._icon_name),
                  dbus.Array([], signature="(iiay)"),
@@ -723,6 +834,7 @@ class WickApp:
 
         self._sni_bus_name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
         self._sni = StatusNotifierItem(self._session_bus, self._sni_bus_name, self)
+        self._dbus_menu = DBusMenu(self._sni._dbus_name, self)
 
         # Register with the StatusNotifierWatcher
         try:
@@ -780,6 +892,19 @@ class WickApp:
     def show_context_menu(self, x: int = 0, y: int = 0):
         """Pop up the right-click context menu."""
         self.menu.popup(None, None, None, None, 0, Gtk.get_current_event_time())
+
+    def toggle_panel_at_pointer(self):
+        """Toggle below the pointer when DBusMenu activation has no coordinates."""
+        click_x = 0
+        try:
+            display = Gdk.Display.get_default()
+            seat = display.get_default_seat() if display else None
+            pointer = seat.get_pointer() if seat else None
+            if pointer:
+                _screen, click_x, _click_y = pointer.get_position()
+        except Exception:
+            pass
+        return self.toggle_panel(int(click_x), 0)
 
     def toggle_panel(self, click_x: int = 0, click_y: int = 0):
         """Toggle panel visibility.  (x, y) are the pointer coords from D-Bus Activate."""
