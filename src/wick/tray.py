@@ -55,15 +55,54 @@ AWAKE_ICON = str(ASSETS_DIR / "wick-awake.svg")
 # StatusNotifierItem icon helpers — stripped base names for the theme path
 _ICON_IDLE = "wick-idle"
 _ICON_AWAKE = "wick-awake"
+_last_right_button_seen_at = 0.0
+
+
+def _is_right_click() -> bool:
+    """Report whether button 3 is down or was observed by the 20ms poll."""
+    global _last_right_button_seen_at
+    try:
+        root = Gdk.get_default_root_window()
+        display = Gdk.Display.get_default()
+        seat = display.get_default_seat() if display else None
+        pointer = seat.get_pointer() if seat else None
+        if root and pointer:
+            _window, _x, _y, mask = root.get_device_position(pointer)
+            if mask & Gdk.ModifierType.BUTTON3_MASK:
+                _last_right_button_seen_at = time.monotonic()
+                return True
+    except Exception:
+        pass
+    return time.monotonic() - _last_right_button_seen_at < 0.15
+
+
+def _poll_pointer_buttons() -> bool:
+    _is_right_click()
+    return True
 
 
 def _icon_pixmap(icon_name: str, size: int = 24):
-    """Render an SVG as StatusNotifierItem ARGB32 pixel data."""
+    """Render a centered SVG on an exact square StatusNotifierItem canvas."""
     path = ASSETS_DIR / f"{icon_name}.svg"
-    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), size, size, True)
-    width, height = pixbuf.get_width(), pixbuf.get_height()
-    channels, stride = pixbuf.get_n_channels(), pixbuf.get_rowstride()
-    pixels = pixbuf.get_pixels()
+    canvas = GdkPixbuf.Pixbuf.new(
+        GdkPixbuf.Colorspace.RGB, True, 8, size, size
+    )
+    canvas.fill(0)
+    glyph_size = max(1, size - 4)
+    icon = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+        str(path), glyph_size, glyph_size, True
+    )
+    offset_x = (size - icon.get_width()) // 2
+    offset_y = (size - icon.get_height()) // 2
+    icon.composite(
+        canvas,
+        offset_x, offset_y, icon.get_width(), icon.get_height(),
+        offset_x, offset_y, 1.0, 1.0,
+        GdkPixbuf.InterpType.BILINEAR, 255,
+    )
+    width, height = canvas.get_width(), canvas.get_height()
+    channels, stride = canvas.get_n_channels(), canvas.get_rowstride()
+    pixels = canvas.get_pixels()
     argb = bytearray(width * height * 4)
     out = 0
     for y in range(height):
@@ -609,10 +648,12 @@ class DBusMenu(dbus.service.Object):
 
     def __init__(self, dbus_name: dbus.service.BusName, app: "WickApp"):
         self._app = app
+        self._show_quick_menu = True
+        self._is_right_click = _is_right_click
         super().__init__(dbus_name, _DBUSMENU_PATH)
 
     @staticmethod
-    def _root_layout():
+    def _root_layout(visible: bool = True):
         root_props = dbus.Dictionary(
             {"children-display": dbus.String("submenu")}, signature="sv"
         )
@@ -630,7 +671,10 @@ class DBusMenu(dbus.service.Object):
         )
         children = []
         for item_id, label, separator in entries:
-            props = {"visible": dbus.Boolean(True), "enabled": dbus.Boolean(True)}
+            props = {
+                "visible": dbus.Boolean(visible),
+                "enabled": dbus.Boolean(True),
+            }
             if separator:
                 props["type"] = dbus.String("separator")
             else:
@@ -647,7 +691,7 @@ class DBusMenu(dbus.service.Object):
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="iias", out_signature="u(ia{sv}av)")
     def GetLayout(self, parent_id: int, recursion_depth: int, property_names):
-        return dbus.UInt32(1), self._root_layout()
+        return dbus.UInt32(1), self._root_layout(self._show_quick_menu)
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="aias", out_signature="a(ia{sv})")
     def GetGroupProperties(self, ids, property_names):
@@ -684,7 +728,13 @@ class DBusMenu(dbus.service.Object):
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="i", out_signature="b")
     def AboutToShow(self, item_id: int):
-        return dbus.Boolean(False)
+        if int(item_id) != 0:
+            return dbus.Boolean(False)
+        self._show_quick_menu = self._is_right_click()
+        if self._show_quick_menu:
+            return dbus.Boolean(False)
+        GLib.idle_add(self._app.toggle_panel_at_pointer)
+        return dbus.Boolean(True)
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="ai", out_signature="aiai")
     def AboutToShowGroup(self, ids):
@@ -905,6 +955,10 @@ class WickApp:
         self._build_context_menu()
 
         self.update_indicator()
+
+        # Poll button state frequently enough to preserve right-click intent
+        # until GNOME Shell asks the DBusMenu which layout to display.
+        GLib.timeout_add(20, _poll_pointer_buttons)
 
         # Periodic refresh every 1 second
         GLib.timeout_add_seconds(1, self._on_tick)

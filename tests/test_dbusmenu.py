@@ -24,6 +24,9 @@ class _App:
     def toggle_panel(self, *coords):
         self.panel_toggles.append(coords)
 
+    def toggle_panel_at_pointer(self):
+        self.panel_toggles.append(("pointer",))
+
     def _quick_start(self, minutes, agents_only=False):
         self.quick_starts.append((minutes, agents_only))
 
@@ -62,6 +65,7 @@ def _namespace():
         "ASSETS_DIR": Path("."),
         "_ICON_IDLE": "wick-idle",
         "_icon_pixmap": lambda name: [],
+        "_is_right_click": lambda: False,
         "WickApp": _App,
     }
 
@@ -80,8 +84,14 @@ class DBusMenuTests(unittest.TestCase):
         app = _App()
         return _load_class("DBusMenu")(object(), app), app
 
-    def test_about_to_show_never_opens_panel(self):
+    def test_left_click_about_to_show_opens_panel_and_requests_layout_update(self):
         menu, app = self.make_menu()
+        self.assertTrue(menu.AboutToShow(0))
+        self.assertEqual(app.panel_toggles, [("pointer",)])
+
+    def test_right_click_about_to_show_only_opens_quick_menu(self):
+        menu, app = self.make_menu()
+        menu._is_right_click = lambda: True
         self.assertFalse(menu.AboutToShow(0))
         self.assertEqual(app.panel_toggles, [])
 
@@ -90,8 +100,16 @@ class DBusMenuTests(unittest.TestCase):
         menu.Event(0, "opened", None, 0)
         self.assertEqual(app.panel_toggles, [])
 
-    def test_layout_exposes_complete_visible_context_menu(self):
+    def test_left_click_layout_hides_quick_menu_items(self):
         menu, _app = self.make_menu()
+        menu.AboutToShow(0)
+        _revision, root = menu.GetLayout(0, -1, [])
+        self.assertTrue(all(not child[1]["visible"] for child in root[2]))
+
+    def test_right_click_layout_exposes_complete_visible_context_menu(self):
+        menu, _app = self.make_menu()
+        menu._is_right_click = lambda: True
+        menu.AboutToShow(0)
         _revision, root = menu.GetLayout(0, -1, [])
         children = root[2]
         self.assertEqual([child[0] for child in children], list(range(1, 11)))
@@ -117,11 +135,11 @@ class DBusMenuTests(unittest.TestCase):
         )
         self.assertEqual(app.stop_calls, 1)
 
-    def test_about_to_show_group_does_not_open_panel(self):
+    def test_about_to_show_group_opens_panel_for_left_click_root_only(self):
         menu, app = self.make_menu()
         updates, errors = menu.AboutToShowGroup([0, 1])
-        self.assertEqual((updates, errors), ([], []))
-        self.assertEqual(app.panel_toggles, [])
+        self.assertEqual((updates, errors), ([0], []))
+        self.assertEqual(app.panel_toggles, [("pointer",)])
 
     def test_event_group_dispatches_clicked_items_only(self):
         menu, app = self.make_menu()
