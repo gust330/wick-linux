@@ -611,7 +611,38 @@ class DBusMenu(dbus.service.Object):
         self._app = app
         self._activation_ready_at = time.monotonic() + 1.5
         self._last_activation_at = 0.0
+        self._primary_activation_at = 0.0
+        self._show_context_menu = False
         super().__init__(dbus_name, _DBUSMENU_PATH)
+
+    @staticmethod
+    def _is_right_click():
+        """Return whether button 3 is held during the menu request."""
+        try:
+            display = Gdk.Display.get_default()
+            seat = display.get_default_seat() if display else None
+            pointer = seat.get_pointer() if seat else None
+            root = Gdk.get_default_root_window()
+            mask = 0
+            if root and pointer:
+                _window, _x, _y, mask = root.get_device_position(pointer)
+            return bool(mask & Gdk.ModifierType.BUTTON3_MASK)
+        except Exception:
+            return False
+
+    def mark_primary_activation(self):
+        """Record SNI Activate so its following DBusMenu probe stays hidden."""
+        now = time.monotonic()
+        self._primary_activation_at = now
+        self._last_activation_at = now
+        self._show_context_menu = False
+
+    def _interaction_is_right_click(self):
+        if time.monotonic() - self._primary_activation_at < 0.5:
+            self._show_context_menu = False
+        elif self._is_right_click():
+            self._show_context_menu = True
+        return self._show_context_menu
 
     def _activate_from_root_event(self):
         """Toggle once for either ordering of GNOME's two async calls."""
@@ -655,9 +686,21 @@ class DBusMenu(dbus.service.Object):
             signature="ia{sv}av",
         )
 
+    @staticmethod
+    def _empty_layout():
+        return dbus.Struct(
+            (
+                dbus.Int32(0),
+                dbus.Dictionary({}, signature="sv"),
+                dbus.Array([], signature="v"),
+            ),
+            signature="ia{sv}av",
+        )
+
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="iias", out_signature="u(ia{sv}av)")
     def GetLayout(self, parent_id: int, recursion_depth: int, property_names):
-        return dbus.UInt32(1), self._root_layout()
+        layout = self._root_layout() if self._interaction_is_right_click() else self._empty_layout()
+        return dbus.UInt32(1), layout
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="aias", out_signature="a(ia{sv})")
     def GetGroupProperties(self, ids, property_names):
@@ -672,7 +715,8 @@ class DBusMenu(dbus.service.Object):
         item_id = int(item_id)
         event_id = str(event_id)
         if item_id == 0 and event_id == "opened":
-            self._activate_from_root_event()
+            if not self._interaction_is_right_click():
+                self._activate_from_root_event()
         elif event_id == "clicked":
             actions = {
                 1: (self._app.toggle_panel, ()),
@@ -696,7 +740,7 @@ class DBusMenu(dbus.service.Object):
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="i", out_signature="b")
     def AboutToShow(self, item_id: int):
-        if int(item_id) == 0:
+        if int(item_id) == 0 and not self._interaction_is_right_click():
             self._activate_from_root_event()
         return dbus.Boolean(False)
 
@@ -769,6 +813,9 @@ class StatusNotifierItem(dbus.service.Object):
     @dbus.service.method(_SNI_IFACE, in_signature="ii")
     def Activate(self, x: int, y: int):
         """Left-click: toggle the panel right below the top bar."""
+        menu = getattr(self._app, "_dbus_menu", None)
+        if menu:
+            menu.mark_primary_activation()
         GLib.idle_add(self._app.toggle_panel, int(x), int(y))
 
     @dbus.service.method(_SNI_IFACE, in_signature="ii")

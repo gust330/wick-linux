@@ -36,6 +36,15 @@ class _App:
         self.stop_calls += 1
 
 
+class _PointerState:
+    mask = 0
+
+
+class _RootWindow:
+    def get_device_position(self, pointer):
+        return None, 0, 0, _PointerState.mask
+
+
 def _load_dbus_menu():
     source = Path(__file__).parents[1] / "src/wick/tray.py"
     tree = ast.parse(source.read_text())
@@ -54,10 +63,20 @@ def _load_dbus_menu():
     )
     glib = types.SimpleNamespace(idle_add=lambda callback, *args: callback(*args))
     gtk = types.SimpleNamespace(main_quit=lambda: None)
+    gdk = types.SimpleNamespace(
+        Display=types.SimpleNamespace(
+            get_default=lambda: types.SimpleNamespace(
+                get_default_seat=lambda: types.SimpleNamespace(get_pointer=lambda: object())
+            )
+        ),
+        get_default_root_window=lambda: _RootWindow(),
+        ModifierType=types.SimpleNamespace(BUTTON3_MASK=4),
+    )
     namespace = {
         "dbus": dbus,
         "GLib": glib,
         "Gtk": gtk,
+        "Gdk": gdk,
         "time": time,
         "_DBUSMENU_IFACE": "com.canonical.dbusmenu",
         "_DBUSMENU_PATH": "/MenuBar",
@@ -106,9 +125,31 @@ class DBusMenuActivationTests(unittest.TestCase):
         menu.AboutToShow(0)
         self.assertEqual(app.pointer_toggles, 2)
 
+    def test_right_click_returns_full_menu_without_opening_panel(self):
+        menu, app = self.make_menu()
+        _PointerState.mask = 4
+        try:
+            menu.AboutToShow(0)
+            _revision, root = menu.GetLayout(0, -1, [])
+        finally:
+            _PointerState.mask = 0
+        self.assertEqual(app.pointer_toggles, 0)
+        self.assertEqual(len(root[2]), 10)
+
+    def test_left_click_opens_panel_and_returns_empty_menu(self):
+        menu, app = self.make_menu()
+        menu.AboutToShow(0)
+        _revision, root = menu.GetLayout(0, -1, [])
+        self.assertEqual(app.pointer_toggles, 1)
+        self.assertEqual(root[2], [])
+
     def test_layout_exposes_complete_visible_context_menu(self):
         menu, _app = self.make_menu()
-        _revision, root = menu.GetLayout(0, -1, [])
+        _PointerState.mask = 4
+        try:
+            _revision, root = menu.GetLayout(0, -1, [])
+        finally:
+            _PointerState.mask = 0
         children = root[2]
         labels = [child[1].get("label") for child in children]
         self.assertEqual(
