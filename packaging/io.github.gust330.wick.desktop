@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Wick
+GenericName=Lid-close Sleep Inhibitor
+Comment=Close the lid. Keep working. Keep your laptop awake with the lid closed.
+Exec=wick app
+Icon=wick
+Terminal=false
+Type=Application
+Categories=Utility;System;Settings;
+Keywords=sleep;suspend;lid;power;caffeinate;inhibit;
+StartupNotify=true
