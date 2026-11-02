@@ -20,12 +20,20 @@ class _App:
     def __init__(self):
         self.pointer_toggles = 0
         self.menu_toggles = 0
+        self.quick_starts = []
+        self.stop_calls = 0
 
     def toggle_panel_at_pointer(self):
         self.pointer_toggles += 1
 
     def toggle_panel(self):
         self.menu_toggles += 1
+
+    def _quick_start(self, minutes, agents_only=False):
+        self.quick_starts.append((minutes, agents_only))
+
+    def _stop_session(self):
+        self.stop_calls += 1
 
 
 def _load_dbus_menu():
@@ -44,10 +52,12 @@ def _load_dbus_menu():
         Struct=lambda values=(), **kwargs: tuple(values),
         exceptions=types.SimpleNamespace(DBusException=Exception),
     )
-    glib = types.SimpleNamespace(idle_add=lambda callback: callback())
+    glib = types.SimpleNamespace(idle_add=lambda callback, *args: callback(*args))
+    gtk = types.SimpleNamespace(main_quit=lambda: None)
     namespace = {
         "dbus": dbus,
         "GLib": glib,
+        "Gtk": gtk,
         "time": time,
         "_DBUSMENU_IFACE": "com.canonical.dbusmenu",
         "_DBUSMENU_PATH": "/MenuBar",
@@ -95,6 +105,33 @@ class DBusMenuActivationTests(unittest.TestCase):
         menu._last_activation_at -= 0.25
         menu.AboutToShow(0)
         self.assertEqual(app.pointer_toggles, 2)
+
+    def test_layout_exposes_complete_visible_context_menu(self):
+        menu, _app = self.make_menu()
+        _revision, root = menu.GetLayout(0, -1, [])
+        children = root[2]
+        labels = [child[1].get("label") for child in children]
+        self.assertEqual(
+            labels,
+            [
+                "Open Wick Panel", None,
+                "Stay Awake: 30m", "Stay Awake: 1h", "Stay Awake: 2h",
+                "Stay Awake: While Agents Run (--agents)", None,
+                "Stop Sleep Inhibition", None, "Quit Wick",
+            ],
+        )
+        self.assertTrue(all(child[1].get("visible", True) for child in children))
+
+    def test_clicked_items_dispatch_actions(self):
+        menu, app = self.make_menu()
+        for item_id in (1, 3, 4, 5, 6, 8):
+            menu.Event(item_id, "clicked", None, 0)
+        self.assertEqual(app.menu_toggles, 1)
+        self.assertEqual(
+            app.quick_starts,
+            [(30, False), (60, False), (120, False), (120, True)],
+        )
+        self.assertEqual(app.stop_calls, 1)
 
 
 if __name__ == "__main__":

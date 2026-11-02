@@ -39,7 +39,7 @@ if "XDG_RUNTIME_DIR" not in os.environ:
 import gi
 gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GdkX11, GLib, Gtk
+from gi.repository import Gdk, GdkPixbuf, GdkX11, GLib, Gtk
 
 import dbus
 import dbus.service
@@ -55,6 +55,32 @@ AWAKE_ICON = str(ASSETS_DIR / "wick-awake.svg")
 # StatusNotifierItem icon helpers — stripped base names for the theme path
 _ICON_IDLE = "wick-idle"
 _ICON_AWAKE = "wick-awake"
+
+
+def _icon_pixmap(icon_name: str, size: int = 24):
+    """Render an SVG as StatusNotifierItem ARGB32 pixel data."""
+    path = ASSETS_DIR / f"{icon_name}.svg"
+    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), size, size, True)
+    width, height = pixbuf.get_width(), pixbuf.get_height()
+    channels, stride = pixbuf.get_n_channels(), pixbuf.get_rowstride()
+    pixels = pixbuf.get_pixels()
+    argb = bytearray(width * height * 4)
+    out = 0
+    for y in range(height):
+        row = y * stride
+        for x in range(width):
+            offset = row + x * channels
+            red, green, blue = pixels[offset:offset + 3]
+            alpha = pixels[offset + 3] if channels == 4 else 255
+            argb[out:out + 4] = bytes((alpha, red, green, blue))
+            out += 4
+    return dbus.Array(
+        [dbus.Struct(
+            (dbus.Int32(width), dbus.Int32(height), dbus.ByteArray(bytes(argb))),
+            signature="iiay",
+        )],
+        signature="(iiay)",
+    )
 
 
 def get_css() -> bytes:
@@ -224,6 +250,7 @@ class WickPanel(Gtk.Window):
         self.is_forever = False
         self.stop_when_agents = True
         self.battery_floor = 20
+        self._shown_at = 0.0
 
         self.connect("key-press-event", self._on_key_press)
         self.connect("button-press-event", self._on_button_press)
@@ -238,7 +265,9 @@ class WickPanel(Gtk.Window):
         return False
 
     def _on_button_press(self, widget, event):
-        """Hide if the click lands outside the panel's allocation."""
+        """Hide if a post-open click lands outside the panel allocation."""
+        if time.monotonic() - self._shown_at < 0.35:
+            return False
         alloc = self.get_allocation()
         if (event.x < 0 or event.y < 0 or
                 event.x > alloc.width or event.y > alloc.height):
@@ -263,6 +292,7 @@ class WickPanel(Gtk.Window):
 
     def show_at(self, x: int, y: int):
         """Show the panel at the given root coordinates and grab input."""
+        self._shown_at = time.monotonic()
         self.update_state()
         self.realize()
         gdk_win = self.get_window()
@@ -596,16 +626,32 @@ class DBusMenu(dbus.service.Object):
         root_props = dbus.Dictionary(
             {"children-display": dbus.String("submenu")}, signature="sv"
         )
-        item_props = dbus.Dictionary(
-            {"label": dbus.String("Open Wick"), "visible": dbus.Boolean(False)},
-            signature="sv",
+        entries = (
+            (1, "Open Wick Panel", False),
+            (2, None, True),
+            (3, "Stay Awake: 30m", False),
+            (4, "Stay Awake: 1h", False),
+            (5, "Stay Awake: 2h", False),
+            (6, "Stay Awake: While Agents Run (--agents)", False),
+            (7, None, True),
+            (8, "Stop Sleep Inhibition", False),
+            (9, None, True),
+            (10, "Quit Wick", False),
         )
-        child = dbus.Struct(
-            (dbus.Int32(1), item_props, dbus.Array([], signature="v")),
-            signature="ia{sv}av",
-        )
+        children = []
+        for item_id, label, separator in entries:
+            props = {"visible": dbus.Boolean(True), "enabled": dbus.Boolean(True)}
+            if separator:
+                props["type"] = dbus.String("separator")
+            else:
+                props["label"] = dbus.String(label)
+            children.append(dbus.Struct(
+                (dbus.Int32(item_id), dbus.Dictionary(props, signature="sv"),
+                 dbus.Array([], signature="v")),
+                signature="ia{sv}av",
+            ))
         return dbus.Struct(
-            (dbus.Int32(0), root_props, dbus.Array([child], signature="v")),
+            (dbus.Int32(0), root_props, dbus.Array(children, signature="v")),
             signature="ia{sv}av",
         )
 
@@ -623,10 +669,24 @@ class DBusMenu(dbus.service.Object):
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="isvu")
     def Event(self, item_id: int, event_id: str, data, timestamp: int):
-        if int(item_id) == 0 and str(event_id) == "opened":
+        item_id = int(item_id)
+        event_id = str(event_id)
+        if item_id == 0 and event_id == "opened":
             self._activate_from_root_event()
-        elif int(item_id) == 1 and str(event_id) == "clicked":
-            GLib.idle_add(self._app.toggle_panel)
+        elif event_id == "clicked":
+            actions = {
+                1: (self._app.toggle_panel, ()),
+                3: (self._app._quick_start, (30,)),
+                4: (self._app._quick_start, (60,)),
+                5: (self._app._quick_start, (120,)),
+                6: (self._app._quick_start, (120, True)),
+                8: (self._app._stop_session, ()),
+                10: (Gtk.main_quit, ()),
+            }
+            action = actions.get(item_id)
+            if action:
+                callback, args = action
+                GLib.idle_add(callback, *args)
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="a(isvu)", out_signature="ai")
     def EventGroup(self, events):
@@ -760,7 +820,7 @@ class StatusNotifierItem(dbus.service.Object):
             return dbus.Dictionary({}, signature="sv")
         props = {}
         for name in (
-            "Category", "Id", "Title", "Status", "IconName",
+            "Category", "Id", "Title", "Status", "IconName", "IconPixmap",
             "IconThemePath", "ToolTip", "ItemIsMenu",
             "Menu",
         ):
@@ -781,6 +841,7 @@ class StatusNotifierItem(dbus.service.Object):
             "Title": dbus.String(self._title),
             "Status": dbus.String(self._status),
             "IconName": dbus.String(self._icon_name),
+            "IconPixmap": _icon_pixmap(self._icon_name),
             "OverlayIconName": dbus.String(""),
             "AttentionIconName": dbus.String(""),
             "IconThemePath": dbus.String(self._icon_theme_path),
