@@ -19,18 +19,14 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.9", "3.13"]
+    container: python:${{ matrix.python }}-slim
     steps:
+      - run: apt-get update -qq && apt-get install -y -qq procps perl
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
       - run: python -m unittest discover tests
         working-directory: linux
       - run: tests/e2e.sh
         working-directory: linux
 
-  linux-logind:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - run: linux/tests/logind/run.sh fedora:42 ubuntu:24.04
+# linux/tests/logind and linux/tests/gnome aren't here on purpose. They need a privileged container with systemd as
+# PID 1, which took down a hosted runner. Run them locally before a release.

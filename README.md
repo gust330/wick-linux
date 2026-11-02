@@ -117,12 +117,13 @@ cd linux
 python3 -m unittest discover tests   # unit tests
 tests/e2e.sh                         # CLI and guard against a simulated lock
 tests/logind/run.sh                  # real systemd-logind and a virtual lid switch, in containers. Needs Docker
+tests/gnome/run.sh                   # loads the extension in real GNOME Shell releases. Needs Docker
 preview/run.sh                       # a real GNOME desktop with Wick in it, in your browser. Needs Docker
 ```
 
 ### Releasing
 
-Push a tag like `v0.2.0`. [`release.yml`](.github/workflows/release.yml) builds, publishes to GitHub Releases, updates the tap and publishes to npm. Its header lists the secrets, all optional. With a Developer ID it also signs and notarises, after which the cask's quarantine step can go and Wick can apply to the official Homebrew cask list.
+Run `linux/tests/logind/run.sh fedora:42 fedora:latest ubuntu:22.04 ubuntu:24.04 debian:12 debian:13` and `linux/tests/gnome/run.sh` first, because CI can't: they need a privileged container with systemd as PID 1. Then push a tag like `v0.2.0`. [`release.yml`](.github/workflows/release.yml) builds, publishes to GitHub Releases, updates the tap and publishes to npm. Its header lists the secrets, all optional. With a Developer ID it also signs and notarises, after which the cask's quarantine step can go and Wick can apply to the official Homebrew cask list.
 
 ## Why not caffeinate?
 
