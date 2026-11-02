@@ -13,6 +13,7 @@ import math
 import os
 from pathlib import Path
 import sys
+import time
 
 # ---------------------------------------------------------------------------
 # Environment setup — MUST happen before GTK/GDK is imported.
@@ -578,8 +579,17 @@ class DBusMenu(dbus.service.Object):
 
     def __init__(self, dbus_name: dbus.service.BusName, app: "WickApp"):
         self._app = app
-        self._opening = False
+        self._activation_ready_at = time.monotonic() + 1.5
+        self._last_activation_at = 0.0
         super().__init__(dbus_name, _DBUSMENU_PATH)
+
+    def _activate_from_root_event(self):
+        """Toggle once for either ordering of GNOME's two async calls."""
+        now = time.monotonic()
+        if now < self._activation_ready_at or now - self._last_activation_at < 0.25:
+            return
+        self._last_activation_at = now
+        GLib.idle_add(self._app.toggle_panel_at_pointer)
 
     @staticmethod
     def _root_layout():
@@ -613,11 +623,8 @@ class DBusMenu(dbus.service.Object):
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="isvu")
     def Event(self, item_id: int, event_id: str, data, timestamp: int):
-        # GNOME sends "opened" immediately before AboutToShow when a click
-        # opens the menu.  The initial AboutToShow during menu discovery must
-        # not open Wick at login, so arm activation only for that event.
         if int(item_id) == 0 and str(event_id) == "opened":
-            self._opening = True
+            self._activate_from_root_event()
         elif int(item_id) == 1 and str(event_id) == "clicked":
             GLib.idle_add(self._app.toggle_panel)
 
@@ -629,9 +636,8 @@ class DBusMenu(dbus.service.Object):
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="i", out_signature="b")
     def AboutToShow(self, item_id: int):
-        if int(item_id) == 0 and self._opening:
-            self._opening = False
-            GLib.idle_add(self._app.toggle_panel_at_pointer)
+        if int(item_id) == 0:
+            self._activate_from_root_event()
         return dbus.Boolean(False)
 
     @dbus.service.method(_DBUSMENU_IFACE, in_signature="ai", out_signature="aiai")
